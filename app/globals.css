@@ -1,26 +1,63 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f3ea;
+  --foreground: #172033;
+  --surface: #fffefb;
+  --ink-muted: #50607a;
+  --brand: #df5b3f;
+  --brand-deep: #ab2f1b;
+  --line: #eadfcb;
+  --font-space: var(--font-headline);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-surface: var(--surface);
+  --color-ink-muted: var(--ink-muted);
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-line: var(--line);
+  --font-sans: var(--font-body);
+  --font-headline: var(--font-headline);
+  --font-nav: var(--font-nav);
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(1200px circle at 20% 10%, #fff8e5 0%, transparent 45%),
+    radial-gradient(900px circle at 80% 80%, #ffe8d2 0%, transparent 40%),
+    var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+[data-scroll-section] {
+  scroll-margin-top: calc(var(--landing-nav-offset, 82px) + 8px);
+}
+
+.surface-card {
+  background: color-mix(in oklab, var(--surface) 92%, white 8%);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 30px rgba(20, 35, 60, 0.06);
+}
+
+.fade-rise {
+  animation: fade-rise 450ms ease-out both;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

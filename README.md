@@ -1,36 +1,121 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Beyond Hangeul
 
-## Getting Started
+A complete Korean Language Learning Web App starter built with:
 
-First, run the development server:
+- Next.js App Router
+- Tailwind CSS
+- Supabase Auth, Database, and Storage-ready architecture
+
+## Features
+
+- Authentication with Supabase (register and login)
+- 3-step registration flow with OTP email verification
+- Role-based access control (`admin` and `user`)
+- Protected routes via middleware
+- User dashboard and profile
+- Lessons list and lesson detail pages
+- Vocabulary management per lesson
+- Progress tracking with completion and score
+- Admin dashboard for lesson CRUD and user visibility
+
+## Required Pages
+
+Implemented routes:
+
+- `/` (Landing page)
+- `/auth/login`
+- `/auth/register`
+- `/auth/BHadmin24` (hidden admin login)
+- `/dashboard`
+- `/admin`
+- `/lessons`
+- `/lessons/[id]`
+- `/profile`
+
+## Project Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create `.env.local` from `.env.example` and set your Supabase keys:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-gmail-address@gmail.com
+SMTP_PASS=wsaz bscr ricf vswe
+SMTP_FROM=Beyond Hangeul <your-gmail-address@gmail.com>
+```
+
+3. In Supabase SQL Editor, run the schema in `supabase/schema.sql`.
+
+4. Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Supabase SQL
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+- Full schema with all required tables is in `supabase/schema.sql`:
+	- `profiles`
+	- `lessons`
+	- `vocabulary`
+	- `progress`
+- Includes:
+	- RLS enabled on all tables
+	- Policies for admin full access
+	- Policies for users to read lessons and manage only their own progress
+	- Auto profile creation trigger after signup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Supabase Client + Auth Helpers
 
-## Learn More
+- Browser client: `lib/supabaseClient.js`
+- Server client: `lib/supabaseServer.js`
+- Server auth helpers: `lib/auth.js`
+- Example query helpers: `lib/queries.js`
 
-To learn more about Next.js, take a look at the following resources:
+## Example Queries
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Fetch lessons (server side):
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```js
+import { fetchLessons } from "@/lib/queries";
 
-## Deploy on Vercel
+const lessons = await fetchLessons();
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Insert/update progress (server side):
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```js
+import { insertOrUpdateProgress } from "@/lib/queries";
+
+await insertOrUpdateProgress({
+	userId,
+	lessonId,
+	completed: true,
+	score: 92,
+});
+```
+
+## Notes
+
+- The admin role is enforced by RLS and middleware route checks.
+- Hidden admin login URL: `/auth/BHadmin24`
+- Fixed admin login credentials on that page:
+	- Username: admin01
+	- Password: BHadmin@24
+- Supabase auth still requires an email for sign-in. This project maps the fixed admin login to:
+	- Email: admin01@beyond-hangeul.local
+- To promote a user to admin, update their role in Supabase:
+
+```sql
+update public.profiles
+set role = 'admin'
+where email = 'admin@example.com';
+```

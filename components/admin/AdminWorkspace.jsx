@@ -1,0 +1,1908 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
+import {
+  ADMIN_SECTIONS,
+  MODULE_STATUS,
+  MODULE_TYPE,
+  PAYMENT_METHODS,
+  PAYMENT_STATUS,
+} from "@/types/dashboardModels";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import {
+  ONE_TIME_PREMIUM_MODULE_ID,
+  approvePaymentAndGrantAccessShared,
+  createModuleShared,
+  createWorksheetShared,
+  deleteModuleShared,
+  deleteWorksheetShared,
+  listModulesShared,
+  listPaymentsShared,
+  listWorksheetsShared,
+  listUsersWithStatusShared,
+  migrateLocalDashboardContentToShared,
+  syncUsers,
+  updateModuleShared,
+  updateWorksheetShared,
+} from "@/services/dashboardDataService";
+import SummaryCard from "@/components/admin/cards/SummaryCard";
+import PendingPaymentsTable from "@/components/admin/payments/PendingPaymentsTable";
+import RecentActivityPanel from "@/components/admin/activity/RecentActivityPanel";
+import QuickActionsCard from "@/components/admin/dashboard/QuickActionsCard";
+import SalesOverviewCard from "@/components/admin/dashboard/SalesOverviewCard";
+import ModuleOverviewCard from "@/components/admin/dashboard/ModuleOverviewCard";
+import PaymentProofModal from "@/components/admin/payments/PaymentProofModal";
+import AdminPathManagement from "@/components/path/AdminPathManagement";
+import { subscribeToTables } from "@/services/realtime/subscribeTables";
+
+const defaultModule = {
+  moduleName: "",
+  topicTitle: "",
+  resourceFileName: "",
+  resourceFileData: "",
+  resourceFileType: "",
+  type: MODULE_TYPE.FREE,
+  status: MODULE_STATUS.ACTIVE,
+};
+
+const createWorksheetRows = (count = 5) => Array.from({ length: count }, () => ({ number: "", korean: "" }));
+
+const defaultWorksheet = {
+  title: "",
+  accessType: MODULE_TYPE.FREE,
+  resourceFileName: "",
+  resourceFileData: "",
+  resourceFileType: "",
+  entries: createWorksheetRows(5),
+};
+
+const SECTION_ROUTES = {
+  dashboard: "/admin/dashboard",
+  modules: "/admin/modules",
+  path: "/admin/path",
+  worksheets: "/admin/worksheets",
+  users: "/admin/users",
+  "sales-report": "/admin/sales-report",
+};
+
+function StatusBadge({ children, tone = "slate" }) {
+  const tones = {
+    slate: "border-slate-600 bg-slate-800 text-slate-200",
+    green: "border-emerald-500/50 bg-emerald-500/15 text-emerald-300",
+    amber: "border-amber-500/50 bg-amber-500/15 text-amber-300",
+    blue: "border-sky-500/50 bg-sky-500/15 text-sky-300",
+    rose: "border-rose-500/50 bg-rose-500/15 text-rose-300",
+  };
+
+  return <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
+}
+
+function SectionCard({ title, subtitle, children, action }) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-xl font-semibold">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-slate-400">{subtitle}</p>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export default function AdminWorkspace({
+  initialUsers = [],
+  initialSection = "dashboard",
+  adminProfile = {
+    displayName: "Administrator",
+    email: "admin@beyond-hangeul.local",
+    role: "admin",
+    initials: "AD",
+  },
+}) {
+  const router = useRouter();
+  const [activeSection, setActiveSection] = useState(initialSection);
+  const [modules, setModules] = useState([]);
+  const [worksheets, setWorksheets] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [payments, setPayments] = useState([]);
+
+  const [moduleForm, setModuleForm] = useState(defaultModule);
+  const [worksheetForm, setWorksheetForm] = useState(defaultWorksheet);
+  const [editingModule, setEditingModule] = useState(null);
+  const [editingWorksheetId, setEditingWorksheetId] = useState("");
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [selectedUserAccount, setSelectedUserAccount] = useState(null);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isCreateModuleModalOpen, setIsCreateModuleModalOpen] = useState(false);
+  const [isWorksheetModalOpen, setIsWorksheetModalOpen] = useState(false);
+  const [previewModule, setPreviewModule] = useState(null);
+  const [moduleFilterTab, setModuleFilterTab] = useState("all");
+  const [moduleSearch, setModuleSearch] = useState("");
+  const [moduleSort, setModuleSort] = useState("newest");
+  const [worksheetFilterTab, setWorksheetFilterTab] = useState("all");
+  const [worksheetSort, setWorksheetSort] = useState("newest");
+  const [moduleActionTarget, setModuleActionTarget] = useState(null);
+  const [moduleFieldErrors, setModuleFieldErrors] = useState({
+    moduleName: false,
+    topicTitle: false,
+    resourceFile: false,
+  });
+  const [moduleValidationAttempt, setModuleValidationAttempt] = useState(0);
+  const [autoReactivateAfterEdit, setAutoReactivateAfterEdit] = useState(true);
+  const [isCreateFileUploading, setIsCreateFileUploading] = useState(false);
+  const [isEditFileUploading, setIsEditFileUploading] = useState(false);
+  const [isWorksheetFileUploading, setIsWorksheetFileUploading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [userFilterTab, setUserFilterTab] = useState("all");
+  const [userSearch, setUserSearch] = useState("");
+  const hasAutoMigratedRef = useRef(false);
+  const realtimeReloadTimerRef = useRef(null);
+
+  const handleAdminLogout = async () => {
+    setLoggingOut(true);
+    const supabase = getSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    router.push("/");
+    router.refresh();
+  };
+
+  const refreshAll = async () => {
+    if (!hasAutoMigratedRef.current) {
+      hasAutoMigratedRef.current = true;
+      try {
+        await migrateLocalDashboardContentToShared();
+      } catch {
+        // Best-effort migration. Continue loading shared data even if migration fails.
+      }
+    }
+
+    syncUsers(initialUsers);
+    const [nextModules, nextUsers, nextPayments, nextWorksheets] = await Promise.all([
+      listModulesShared(),
+      listUsersWithStatusShared(initialUsers),
+      listPaymentsShared(),
+      listWorksheetsShared(),
+    ]);
+
+    setModules(nextModules);
+    setWorksheets(nextWorksheets);
+    setUsers(nextUsers);
+    setPayments(nextPayments);
+  };
+
+  useEffect(() => {
+    void refreshAll();
+  }, []);
+
+  useEffect(() => {
+    // Realtime sync for admin modules, worksheets, users, payments, and access updates.
+    const scheduleReload = () => {
+      if (realtimeReloadTimerRef.current) {
+        clearTimeout(realtimeReloadTimerRef.current);
+      }
+      realtimeReloadTimerRef.current = setTimeout(() => {
+        realtimeReloadTimerRef.current = null;
+        void refreshAll();
+      }, 120);
+    };
+
+    const unsubscribe = subscribeToTables({
+      tables: [
+        "learning_modules",
+        "learning_worksheets",
+        "learning_paths",
+        "learning_path_steps",
+        "payment_records",
+        "user_module_access",
+        "profiles",
+      ],
+      channelName: "admin-workspace",
+      onChange: scheduleReload,
+    });
+
+    return () => {
+      if (realtimeReloadTimerRef.current) {
+        clearTimeout(realtimeReloadTimerRef.current);
+        realtimeReloadTimerRef.current = null;
+      }
+      unsubscribe();
+    };
+  }, []);
+
+  const moduleMap = useMemo(() => new Map(modules.map((item) => [item.id, item])), [modules]);
+  const moduleShakeClass = "motion-safe:animate-[field-shake_280ms_ease-in-out]";
+
+  const metrics = useMemo(() => {
+    const paidModules = modules.filter((item) => item.type === MODULE_TYPE.PAID);
+    const pendingPayments = payments.filter((item) => item.status === PAYMENT_STATUS.PENDING);
+    const approvedPayments = payments.filter((item) => item.status === PAYMENT_STATUS.APPROVED);
+
+    return {
+      moduleCount: modules.length,
+      paidModuleCount: paidModules.length,
+      userCount: users.length,
+      pendingPayments: pendingPayments.length,
+      approvedPayments: approvedPayments.length,
+    };
+  }, [modules, payments, users]);
+
+  const userAccountRows = useMemo(() => {
+    return users.map((user) => {
+      const role = String(user.role || "user").toLowerCase() === "admin" ? "admin" : "user";
+      const isAdmin = role === "admin";
+      const hasPremiumAccess = !isAdmin && user.unlockedModules.length > 0;
+      const latestPaymentStatus = user.latestPayment?.status || "none";
+
+      return {
+        ...user,
+        role,
+        isAdmin,
+        learningAccess: isAdmin ? "not-applicable" : hasPremiumAccess ? "premium" : "free",
+        paymentStatus: isAdmin ? "na" : latestPaymentStatus,
+        premiumEntitlement: isAdmin ? "na" : hasPremiumAccess ? "all-premium" : "none",
+      };
+    });
+  }, [users]);
+
+  const usersSummary = useMemo(() => {
+    const totalAccounts = userAccountRows.length;
+    const adminAccounts = userAccountRows.filter((user) => user.isAdmin).length;
+    const totalUsers = userAccountRows.filter((user) => !user.isAdmin).length;
+    const premiumUsers = userAccountRows.filter((user) => user.learningAccess === "premium").length;
+
+    return {
+      totalAccounts,
+      totalUsers,
+      premiumUsers,
+      adminAccounts,
+    };
+  }, [userAccountRows]);
+
+  const filteredUserRows = useMemo(() => {
+    const normalizedSearch = userSearch.trim().toLowerCase();
+
+    return userAccountRows.filter((user) => {
+      const matchesFilter =
+        userFilterTab === "all"
+          ? true
+          : userFilterTab === "users"
+            ? !user.isAdmin
+            : userFilterTab === "admins"
+              ? user.isAdmin
+              : user.learningAccess === "premium";
+
+      if (!matchesFilter) return false;
+      if (!normalizedSearch) return true;
+
+      return [user.name, user.email].some((value) =>
+        String(value || "").toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [userAccountRows, userFilterTab, userSearch]);
+
+  const dashboardInsights = useMemo(() => {
+    const userMap = new Map(users.map((item) => [item.id, item.name || item.email || "Learner"]));
+    const resolveUserName = (payment) =>
+      userMap.get(payment.userId) || payment.userEmail?.split("@")[0] || "Learner";
+
+    const approvedPayments = payments.filter((item) => item.status === PAYMENT_STATUS.APPROVED);
+    const pendingPayments = payments
+      .filter((item) => item.status === PAYMENT_STATUS.PENDING)
+      .sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
+
+    const getPaymentModuleLabel = (payment) =>
+      payment.moduleId === ONE_TIME_PREMIUM_MODULE_ID
+        ? "All Premium Modules"
+        : moduleMap.get(payment.moduleId)?.moduleName || "All Premium Modules";
+    const amountForPayment = (payment) => Number(payment.amount || 150);
+    const totalRevenue = approvedPayments.reduce((sum, payment) => sum + amountForPayment(payment), 0);
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const sevenDaysAgo = now.getTime() - 6 * 24 * 60 * 60 * 1000;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    const approvedWithTime = approvedPayments.map((payment) => ({
+      payment,
+      timestamp: new Date(payment.approvedAt || payment.submittedAt || 0).getTime(),
+      amount: amountForPayment(payment),
+    }));
+
+    const todayRevenue = approvedWithTime
+      .filter((item) => item.timestamp >= startOfToday)
+      .reduce((sum, item) => sum + item.amount, 0);
+    const weekRevenue = approvedWithTime
+      .filter((item) => item.timestamp >= sevenDaysAgo)
+      .reduce((sum, item) => sum + item.amount, 0);
+    const monthRevenue = approvedWithTime
+      .filter((item) => item.timestamp >= monthStart)
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    const modulePurchases = approvedPayments.reduce((map, payment) => {
+      map.set(payment.moduleId, (map.get(payment.moduleId) || 0) + 1);
+      return map;
+    }, new Map());
+    const mostPurchasedModuleId = [...modulePurchases.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+    const mostPurchasedModuleName = mostPurchasedModuleId
+      ? moduleMap.get(mostPurchasedModuleId)?.moduleName || "Unknown Module"
+      : "No purchases yet";
+
+    const pendingRows = pendingPayments.map((payment) => ({
+      id: payment.id,
+      userName: resolveUserName(payment),
+      moduleName: getPaymentModuleLabel(payment),
+      dateLabel: new Date(payment.submittedAt || Date.now()).toLocaleDateString(),
+      payment,
+    }));
+
+    const activities = [
+      ...approvedPayments.map((payment) => ({
+        id: `approved-${payment.id}`,
+        timestamp: new Date(payment.approvedAt || payment.submittedAt || 0).getTime(),
+        text: `${resolveUserName(payment)} purchased one-time premium access`,
+      })),
+      ...pendingPayments.map((payment) => ({
+        id: `pending-${payment.id}`,
+        timestamp: new Date(payment.submittedAt || 0).getTime(),
+        text: `${resolveUserName(payment)} submitted payment proof`,
+      })),
+      ...modules.map((module) => ({
+        id: `module-${module.id}`,
+        timestamp: new Date(module.createdAt || 0).getTime(),
+        text: `Admin added new module: ${module.moduleName}`,
+      })),
+    ]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 14)
+      .map((item) => ({
+        ...item,
+        timeLabel: item.timestamp ? new Date(item.timestamp).toLocaleString() : "Just now",
+      }));
+
+    return {
+      totalRevenue,
+      todayRevenue,
+      weekRevenue,
+      monthRevenue,
+      pendingRows,
+      activities,
+      premiumModuleCount: modules.filter((item) => item.type === MODULE_TYPE.PAID).length,
+      freeModuleCount: modules.filter((item) => item.type === MODULE_TYPE.FREE).length,
+      mostPurchasedModuleName,
+    };
+  }, [moduleMap, modules, payments, users]);
+
+  const formatPeso = (value) =>
+    `P${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const quickActions = [
+    {
+      key: "create-module",
+      icon: "➕",
+      label: "Create Module",
+      onClick: () => {
+        setActiveSection("modules");
+        setModuleForm(defaultModule);
+        setModuleFieldErrors({ moduleName: false, topicTitle: false, resourceFile: false });
+        setModuleValidationAttempt(0);
+        setIsCreateModuleModalOpen(true);
+        router.push("/admin/modules");
+      },
+    },
+    {
+      key: "view-users",
+      icon: "👥",
+      label: "View Users",
+      onClick: () => {
+        setActiveSection("users");
+        router.push("/admin/users");
+      },
+    },
+    {
+      key: "add-worksheet",
+      icon: "📝",
+      label: "Add Worksheet",
+      onClick: () => {
+        setActiveSection("worksheets");
+        setEditingWorksheetId("");
+        setWorksheetForm(defaultWorksheet);
+        setIsWorksheetModalOpen(true);
+        router.push("/admin/worksheets");
+      },
+    },
+    {
+      key: "manage-path",
+      icon: "🧭",
+      label: "Manage Path",
+      onClick: () => {
+        setActiveSection("path");
+        router.push("/admin/path");
+      },
+    },
+  ];
+
+  const uploadModuleFileToStorage = async (file) => {
+    const body = new FormData();
+    body.append("file", file);
+
+    const response = await fetch("/api/admin/upload-module-file", {
+      method: "POST",
+      body,
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.error || "Failed to upload module file.");
+    }
+
+    const publicUrl = payload?.publicUrl || "";
+
+    if (!publicUrl) {
+      throw new Error("Failed to resolve uploaded module file URL.");
+    }
+
+    return publicUrl;
+  };
+
+  const getStoragePathFromPublicUrl = (publicUrl) => {
+    const bucket = process.env.NEXT_PUBLIC_SUPABASE_MODULES_BUCKET || "module-files";
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    if (!publicUrl || !url) return "";
+
+    const prefix = `${url}/storage/v1/object/public/${bucket}/`;
+    if (!publicUrl.startsWith(prefix)) return "";
+
+    const rawPath = publicUrl.slice(prefix.length);
+    return decodeURIComponent(rawPath);
+  };
+
+  const deleteModuleFileFromStorage = async (publicUrl) => {
+    const storagePath = getStoragePathFromPublicUrl(publicUrl);
+    if (!storagePath) return;
+
+    const supabase = getSupabaseBrowserClient();
+    const bucket = process.env.NEXT_PUBLIC_SUPABASE_MODULES_BUCKET || "module-files";
+    const { error } = await supabase.storage.from(bucket).remove([storagePath]);
+    if (error) {
+      throw new Error(error.message || "Failed to remove old module file from storage.");
+    }
+  };
+
+  const handleModuleFileUpload = async (file, isEdit = false) => {
+    if (!file) return;
+    if (isEdit) {
+      setIsEditFileUploading(true);
+    } else {
+      setIsCreateFileUploading(true);
+    }
+
+    const allowedMime = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+
+    if (!allowedMime.includes(file.type)) {
+      setStatusMessage("Only PDF, DOC, and DOCX files are supported.");
+      if (!isEdit) {
+        setModuleFieldErrors((prev) => ({ ...prev, resourceFile: true }));
+      }
+      if (isEdit) {
+        setIsEditFileUploading(false);
+      } else {
+        setIsCreateFileUploading(false);
+      }
+      return;
+    }
+
+    let uploadedFileUrl = "";
+    try {
+      uploadedFileUrl = await uploadModuleFileToStorage(file);
+    } catch (error) {
+      setStatusMessage(error.message || "File upload failed. Check storage bucket and permissions.");
+      if (!isEdit) {
+        setModuleFieldErrors((prev) => ({ ...prev, resourceFile: true }));
+      }
+      if (isEdit) {
+        setIsEditFileUploading(false);
+      } else {
+        setIsCreateFileUploading(false);
+      }
+      return;
+    }
+
+    if (isEdit) {
+      setEditingModule((prev) => ({
+        ...prev,
+        resourceFileName: file.name,
+        resourceFileType: file.type,
+        resourceFileData: uploadedFileUrl,
+      }));
+      setStatusMessage("Module file uploaded to storage.");
+      setIsEditFileUploading(false);
+      return;
+    }
+
+    setModuleForm((prev) => ({
+      ...prev,
+      resourceFileName: file.name,
+      resourceFileType: file.type,
+      resourceFileData: uploadedFileUrl,
+    }));
+    setModuleFieldErrors((prev) => ({ ...prev, resourceFile: false }));
+    setStatusMessage("Module file uploaded to storage.");
+    setIsCreateFileUploading(false);
+  };
+
+  const beginModuleEdit = async (module) => {
+    if (!module) return;
+
+    if ((module.status || MODULE_STATUS.ACTIVE) !== MODULE_STATUS.DRAFT) {
+      await updateModuleShared(module.id, { status: MODULE_STATUS.DRAFT });
+      await refreshAll();
+      setStatusMessage("Module set to inactive while editing.");
+    }
+
+    setAutoReactivateAfterEdit(true);
+    setEditingModule({ ...module, status: MODULE_STATUS.DRAFT });
+  };
+
+  const saveNewModule = async (event) => {
+    event.preventDefault();
+    const moduleName = moduleForm.moduleName.trim();
+    const topicTitle = moduleForm.topicTitle.trim();
+    const hasValidFile = Boolean(
+      moduleForm.resourceFileName && moduleForm.resourceFileType && moduleForm.resourceFileData
+    );
+
+    const nextErrors = {
+      moduleName: !moduleName,
+      topicTitle: !topicTitle,
+      resourceFile: !hasValidFile,
+    };
+
+    if (nextErrors.moduleName || nextErrors.topicTitle || nextErrors.resourceFile) {
+      setModuleFieldErrors(nextErrors);
+      setModuleValidationAttempt((prev) => prev + 1);
+    }
+
+    if (!moduleName || !topicTitle || !hasValidFile) {
+      setStatusMessage("Please complete all required fields: Module Name, Title/Topic, and upload a PDF/DOC/DOCX file.");
+      return;
+    }
+
+    await createModuleShared({
+      ...moduleForm,
+      moduleName,
+      topicTitle,
+      price: null,
+    });
+    setModuleFieldErrors({ moduleName: false, topicTitle: false, resourceFile: false });
+    setModuleValidationAttempt(0);
+    setModuleForm(defaultModule);
+    setIsCreateModuleModalOpen(false);
+    setStatusMessage("Module created.");
+    await refreshAll();
+  };
+
+  const saveEditedModule = async () => {
+    if (!editingModule) return;
+    const existingModule = modules.find((module) => module.id === editingModule.id);
+    const moduleName = editingModule.moduleName.trim();
+    const topicTitle = editingModule.topicTitle.trim();
+    const hasValidFile = Boolean(
+      editingModule.resourceFileName && editingModule.resourceFileType && editingModule.resourceFileData
+    );
+
+    if (!moduleName || !topicTitle || !hasValidFile) {
+      setStatusMessage("Edit requires Module Name, Title/Topic, and file.");
+      return;
+    }
+
+    const oldFileUrl = existingModule?.resourceFileData || "";
+    const nextFileUrl = editingModule.resourceFileData || "";
+    const shouldDeleteOldFile = Boolean(oldFileUrl) && oldFileUrl !== nextFileUrl;
+
+    if (shouldDeleteOldFile) {
+      try {
+        await deleteModuleFileFromStorage(oldFileUrl);
+      } catch (error) {
+        setStatusMessage(error.message || "Unable to remove old file from storage.");
+        return;
+      }
+    }
+
+    await updateModuleShared(editingModule.id, {
+      moduleName,
+      topicTitle,
+      resourceFileName: editingModule.resourceFileName || "",
+      resourceFileType: editingModule.resourceFileType || "",
+      resourceFileData: editingModule.resourceFileData || "",
+      type: editingModule.type,
+      price: null,
+      status: autoReactivateAfterEdit ? MODULE_STATUS.ACTIVE : editingModule.status || MODULE_STATUS.DRAFT,
+    });
+    setEditingModule(null);
+    setStatusMessage(
+      autoReactivateAfterEdit
+        ? "Module updated and automatically reactivated."
+        : "Module updated and kept inactive."
+    );
+    await refreshAll();
+  };
+
+  const deleteModuleWithStorage = async (module) => {
+    try {
+      await deleteModuleFileFromStorage(module.resourceFileData || "");
+    } catch (error) {
+      setStatusMessage(error.message || "Unable to remove module file from storage.");
+      return;
+    }
+
+    await deleteModuleShared(module.id);
+    setStatusMessage("Module deleted.");
+    await refreshAll();
+  };
+
+  const openCreateWorksheetModal = () => {
+    setEditingWorksheetId("");
+    setWorksheetForm(defaultWorksheet);
+    setIsWorksheetModalOpen(true);
+  };
+
+  const beginWorksheetEdit = (worksheet) => {
+    setEditingWorksheetId(worksheet.id);
+    setWorksheetForm({
+      title: worksheet.title,
+      accessType: worksheet.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
+      resourceFileName: String(worksheet.resourceFileName || ""),
+      resourceFileData: String(worksheet.resourceFileData || ""),
+      resourceFileType: String(worksheet.resourceFileType || ""),
+      entries: (worksheet.entries || []).length
+        ? worksheet.entries.map((entry) => ({
+            number: String(entry.number || ""),
+            korean: String(entry.korean || ""),
+          }))
+        : createWorksheetRows(5),
+    });
+    setIsWorksheetModalOpen(true);
+  };
+
+  const handleWorksheetFileUpload = async (file) => {
+    if (!file) return;
+    setIsWorksheetFileUploading(true);
+    try {
+      const uploadedFileUrl = await uploadModuleFileToStorage(file);
+      setWorksheetForm((prev) => ({
+        ...prev,
+        resourceFileName: file.name,
+        resourceFileType: file.type || "application/octet-stream",
+        resourceFileData: String(uploadedFileUrl || ""),
+      }));
+      setStatusMessage("Worksheet file uploaded to storage.");
+    } catch (error) {
+      setStatusMessage(error?.message || "Unable to upload worksheet file.");
+    } finally {
+      setIsWorksheetFileUploading(false);
+    }
+  };
+
+  const saveWorksheetFromModal = async (event) => {
+    event.preventDefault();
+    const normalizedEntries = (worksheetForm.entries || [])
+      .map((row) => ({ number: String(row.number || "").trim(), korean: String(row.korean || "").trim() }))
+      .filter((row) => row.number && row.korean);
+
+    if (!worksheetForm.title.trim()) {
+      setStatusMessage("Worksheet title is required.");
+      return;
+    }
+
+    if (!normalizedEntries.length) {
+      setStatusMessage("Add at least one valid English/Korean row.");
+      return;
+    }
+
+    if (editingWorksheetId) {
+      await updateWorksheetShared(editingWorksheetId, {
+        title: worksheetForm.title.trim(),
+        accessType: worksheetForm.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
+        resourceFileName: worksheetForm.resourceFileName || "",
+        resourceFileType: worksheetForm.resourceFileType || "",
+        resourceFileData: worksheetForm.resourceFileData || "",
+        entries: normalizedEntries,
+      });
+      setStatusMessage("Worksheet updated.");
+    } else {
+      await createWorksheetShared({
+        title: worksheetForm.title.trim(),
+        accessType: worksheetForm.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
+        resourceFileName: worksheetForm.resourceFileName || "",
+        resourceFileType: worksheetForm.resourceFileType || "",
+        resourceFileData: worksheetForm.resourceFileData || "",
+        entries: normalizedEntries,
+      });
+      setStatusMessage("Worksheet created.");
+    }
+
+    setEditingWorksheetId("");
+    setWorksheetForm(defaultWorksheet);
+    setIsWorksheetModalOpen(false);
+    void refreshAll();
+  };
+
+  const renderDashboard = () => (
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <SummaryCard icon="👥" label="Total Users" value={metrics.userCount} tone="sky" />
+        <SummaryCard icon="📚" label="Total Modules" value={metrics.moduleCount} tone="slate" />
+        <SummaryCard icon="🏷️" label="Premium Modules Sold" value={metrics.approvedPayments} tone="amber" />
+        <SummaryCard icon="⏳" label="Pending Payments" value={metrics.pendingPayments} tone="amber" />
+        <SummaryCard icon="💰" label="Total Revenue" value={formatPeso(dashboardInsights.totalRevenue)} tone="emerald" />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+        <PendingPaymentsTable
+          pendingRows={dashboardInsights.pendingRows}
+          onViewProof={(payment) => {
+            const row = dashboardInsights.pendingRows.find((item) => item.payment.id === payment.id);
+            setSelectedPayment({ ...payment, userName: row?.userName || payment.userEmail });
+          }}
+          onApprove={async (payment) => {
+            await approvePaymentAndGrantAccessShared(payment.id);
+            setStatusMessage("Payment confirmed and module access granted.");
+            await refreshAll();
+          }}
+        />
+        <RecentActivityPanel activities={dashboardInsights.activities} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
+        <QuickActionsCard actions={quickActions} />
+        <SalesOverviewCard
+          todayRevenue={dashboardInsights.todayRevenue}
+          weekRevenue={dashboardInsights.weekRevenue}
+          monthRevenue={dashboardInsights.monthRevenue}
+          totalRevenue={dashboardInsights.totalRevenue}
+        />
+        <ModuleOverviewCard
+          freeCount={dashboardInsights.freeModuleCount}
+          premiumCount={dashboardInsights.premiumModuleCount}
+          mostPurchased={dashboardInsights.mostPurchasedModuleName}
+        />
+      </div>
+    </div>
+  );
+
+  const renderModules = () => {
+    const normalizedSearch = moduleSearch.trim().toLowerCase();
+    const filteredModules = modules
+      .filter((item) => (moduleFilterTab === "all" ? true : item.type === moduleFilterTab))
+      .filter((item) => {
+        if (!normalizedSearch) return true;
+        return [item.moduleName, item.topicTitle, item.resourceFileName].some((value) =>
+          String(value || "").toLowerCase().includes(normalizedSearch)
+        );
+      })
+      .sort((left, right) => {
+        const leftDate = new Date(left.createdAt || 0).getTime();
+        const rightDate = new Date(right.createdAt || 0).getTime();
+        return moduleSort === "oldest" ? leftDate - rightDate : rightDate - leftDate;
+      });
+
+    const tabClasses = (tabKey) =>
+      `rounded-lg border px-3 py-1.5 text-sm transition ${
+        moduleFilterTab === tabKey ? "border-amber-400/80 bg-amber-500/15 text-amber-200" : "border-white/20 text-slate-300 hover:bg-white/10"
+      }`;
+
+    return (
+      <div className="space-y-5">
+        <SectionCard title="Modules" subtitle="Professional module management with filters, sorting, and quick actions.">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setModuleForm(defaultModule);
+                setModuleFieldErrors({ moduleName: false, topicTitle: false, resourceFile: false });
+                setModuleValidationAttempt(0);
+                setIsCreateModuleModalOpen(true);
+              }}
+              className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-[#0b1728] hover:bg-amber-300"
+            >
+              + Create Module
+            </button>
+
+            <input
+              value={moduleSearch}
+              onChange={(event) => setModuleSearch(event.target.value)}
+              placeholder="Search modules..."
+              className="min-w-60 flex-1 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm outline-none focus:border-amber-400"
+            />
+
+            <select
+              value={moduleSort}
+              onChange={(event) => setModuleSort(event.target.value)}
+              className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm outline-none focus:border-amber-400"
+            >
+              <option value="newest">Sort: Newest</option>
+              <option value="oldest">Sort: Oldest</option>
+            </select>
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => setModuleFilterTab("all")} className={tabClasses("all")}>
+              All
+            </button>
+            <button type="button" onClick={() => setModuleFilterTab(MODULE_TYPE.FREE)} className={tabClasses(MODULE_TYPE.FREE)}>
+              Free
+            </button>
+            <button type="button" onClick={() => setModuleFilterTab(MODULE_TYPE.PAID)} className={tabClasses(MODULE_TYPE.PAID)}>
+              Premium
+            </button>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-white/10">
+            <table className="w-full min-w-260 text-sm">
+              <thead className="bg-[#13243d] text-slate-300">
+                <tr>
+                  <th className="px-3 py-2 text-left">Module Name</th>
+                  <th className="px-3 py-2 text-left">Topic / Title</th>
+                  <th className="px-3 py-2 text-left">Type</th>
+                  <th className="px-3 py-2 text-left">File</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Created</th>
+                  <th className="px-3 py-2 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredModules.length === 0 ? (
+                  <tr className="border-t border-white/10 bg-[#0f1d32]">
+                    <td className="px-3 py-6 text-center text-slate-400" colSpan={7}>
+                      No modules found for the current filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredModules.map((module) => {
+                    const isPaid = module.type === MODULE_TYPE.PAID;
+                    const rowStatus = module.status || MODULE_STATUS.ACTIVE;
+
+                    return (
+                      <tr key={module.id} className="border-t border-white/10 bg-[#0f1d32] align-top">
+                        <td className="px-3 py-3 font-semibold text-white">{module.moduleName}</td>
+                        <td className="px-3 py-3 text-slate-300">{module.topicTitle}</td>
+                        <td className="px-3 py-3">
+                          <StatusBadge tone={isPaid ? "amber" : "green"}>{isPaid ? "Premium" : "Free"}</StatusBadge>
+                        </td>
+                        <td className="max-w-44 truncate px-3 py-3 text-emerald-300">{module.resourceFileName || "-"}</td>
+                        <td className="px-3 py-3">
+                          <StatusBadge tone={rowStatus === MODULE_STATUS.ACTIVE ? "green" : "slate"}>
+                            {rowStatus === MODULE_STATUS.ACTIVE ? "Active" : "Draft"}
+                          </StatusBadge>
+                        </td>
+                        <td className="px-3 py-3 text-slate-300">
+                          {module.createdAt ? new Date(module.createdAt).toLocaleDateString() : "-"}
+                        </td>
+                        <td className="relative px-3 py-3">
+                          <button
+                            type="button"
+                            onClick={() => setModuleActionTarget(module)}
+                            className="inline-flex items-center justify-center rounded-lg border border-white/20 p-2 text-slate-200 hover:bg-white/10"
+                            aria-label={`Edit actions for ${module.moduleName}`}
+                            title="Module actions"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  };
+
+  const renderPath = () => (
+    <AdminPathManagement modules={modules} worksheets={worksheets} onSaved={refreshAll} />
+  );
+
+  const renderWorksheets = () => (
+    <SectionCard
+      title="Worksheet Management"
+      subtitle="Manage worksheet records and create new worksheets from a modal form."
+      action={
+        <button
+          type="button"
+          onClick={openCreateWorksheetModal}
+          className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-[#0b1728] hover:bg-amber-300"
+        >
+          + Create Worksheet
+        </button>
+      }
+    >
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select
+          value={worksheetSort}
+          onChange={(event) => setWorksheetSort(event.target.value)}
+          className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm outline-none focus:border-amber-400"
+        >
+          <option value="newest">Sort: Newest</option>
+          <option value="oldest">Sort: Oldest</option>
+        </select>
+
+        <div className="ml-auto flex flex-wrap gap-2">
+          {[
+            { key: "all", label: "All" },
+            { key: MODULE_TYPE.FREE, label: "Free" },
+            { key: MODULE_TYPE.PAID, label: "Premium" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setWorksheetFilterTab(tab.key)}
+              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                worksheetFilterTab === tab.key
+                  ? "border-amber-400/80 bg-amber-500/15 text-amber-200"
+                  : "border-white/20 text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-white/10">
+        <table className="w-full min-w-240 text-sm">
+          <thead className="bg-[#13243d] text-slate-300">
+            <tr>
+              <th className="px-3 py-2 text-left">Worksheet Title</th>
+              <th className="px-3 py-2 text-left">Access</th>
+              <th className="px-3 py-2 text-left">Rows</th>
+              <th className="px-3 py-2 text-left">Created</th>
+              <th className="px-3 py-2 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {worksheets
+              .filter((worksheet) =>
+                worksheetFilterTab === "all"
+                  ? true
+                  : (worksheet.accessType || MODULE_TYPE.FREE) === worksheetFilterTab
+              )
+              .sort((left, right) => {
+                const leftDate = new Date(left.createdAt || 0).getTime();
+                const rightDate = new Date(right.createdAt || 0).getTime();
+                return worksheetSort === "oldest" ? leftDate - rightDate : rightDate - leftDate;
+              }).length === 0 ? (
+              <tr className="border-t border-white/10 bg-[#0f1d32]">
+                <td colSpan={5} className="px-3 py-8 text-center text-slate-400">
+                  No worksheets found for the current filter.
+                </td>
+              </tr>
+            ) : (
+              worksheets
+                .filter((worksheet) =>
+                  worksheetFilterTab === "all"
+                    ? true
+                    : (worksheet.accessType || MODULE_TYPE.FREE) === worksheetFilterTab
+                )
+                .sort((left, right) => {
+                  const leftDate = new Date(left.createdAt || 0).getTime();
+                  const rightDate = new Date(right.createdAt || 0).getTime();
+                  return worksheetSort === "oldest" ? leftDate - rightDate : rightDate - leftDate;
+                })
+                .map((worksheet) => (
+                <tr key={worksheet.id} className="border-t border-white/10 bg-[#0f1d32] align-top">
+                  <td className="px-3 py-3 font-semibold text-white">{worksheet.title}</td>
+                  <td className="px-3 py-3">
+                    <StatusBadge tone={worksheet.accessType === MODULE_TYPE.PAID ? "amber" : "green"}>
+                      {worksheet.accessType === MODULE_TYPE.PAID ? "Premium" : "Free"}
+                    </StatusBadge>
+                  </td>
+                  <td className="px-3 py-3 text-slate-300">{(worksheet.entries || []).length}</td>
+                  <td className="px-3 py-3 text-slate-300">{worksheet.createdAt ? new Date(worksheet.createdAt).toLocaleDateString() : "-"}</td>
+                  <td className="px-3 py-3">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => beginWorksheetEdit(worksheet)}
+                        className="rounded-lg border border-slate-500 px-3 py-1.5 text-xs hover:border-amber-300"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await deleteWorksheetShared(worksheet.id);
+                          setStatusMessage("Worksheet deleted.");
+                          void refreshAll();
+                        }}
+                        className="rounded-lg border border-rose-500/50 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  );
+
+  const renderUsers = () => (
+    <SectionCard title="Users" subtitle="Manage account roles, learning access, and premium entitlement clearly.">
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard icon="👤" label="Total Accounts" value={usersSummary.totalAccounts} tone="slate" />
+        <SummaryCard icon="🧑‍🎓" label="Total Users" value={usersSummary.totalUsers} tone="sky" />
+        <SummaryCard icon="💎" label="Premium Users" value={usersSummary.premiumUsers} tone="emerald" />
+        <SummaryCard icon="🛡️" label="Admin Accounts" value={usersSummary.adminAccounts} tone="amber" />
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {[
+          { key: "all", label: "All Accounts" },
+          { key: "users", label: "Users" },
+          { key: "admins", label: "Admins" },
+          { key: "premium", label: "Premium Users" },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setUserFilterTab(tab.key)}
+            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+              userFilterTab === tab.key
+                ? "border-amber-400/80 bg-amber-500/15 text-amber-200"
+                : "border-white/20 text-slate-300 hover:bg-white/10"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+
+        <input
+          value={userSearch}
+          onChange={(event) => setUserSearch(event.target.value)}
+          placeholder="Search by name or email..."
+          className="ml-auto min-w-60 flex-1 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm outline-none focus:border-amber-400"
+        />
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-white/10">
+        <table className="w-full min-w-260 text-sm">
+          <thead className="bg-[#13243d] text-slate-300">
+            <tr>
+              <th className="px-3 py-2 text-left">Name</th>
+              <th className="px-3 py-2 text-left">Email</th>
+              <th className="px-3 py-2 text-left">Role</th>
+              <th className="px-3 py-2 text-left">Learning Access</th>
+              <th className="px-3 py-2 text-left">Payment Status</th>
+              <th className="px-3 py-2 text-left">Premium Entitlement</th>
+              <th className="px-3 py-2 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUserRows.length === 0 ? (
+              <tr className="border-t border-white/10 bg-[#0f1d32]">
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
+                  No user accounts found for the current filters.
+                </td>
+              </tr>
+            ) : (
+              filteredUserRows.map((user) => (
+                <tr key={user.id} className="border-t border-white/10 bg-[#0f1d32] align-top">
+                  <td className="px-3 py-3 font-semibold text-white">{user.name || "Learner"}</td>
+                  <td className="px-3 py-3 text-slate-300">{user.email}</td>
+                  <td className="px-3 py-3">
+                    <StatusBadge tone={user.isAdmin ? "amber" : "blue"}>
+                      {user.isAdmin ? "Admin" : "User"}
+                    </StatusBadge>
+                  </td>
+                  <td className="px-3 py-3">
+                    {user.learningAccess === "premium" ? (
+                      <StatusBadge tone="green">Premium Access</StatusBadge>
+                    ) : user.learningAccess === "free" ? (
+                      <StatusBadge tone="slate">Free Plan</StatusBadge>
+                    ) : (
+                      <StatusBadge tone="slate">Not Applicable</StatusBadge>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    {user.paymentStatus === "na" ? (
+                      <span className="text-slate-500">—</span>
+                    ) : user.paymentStatus === PAYMENT_STATUS.APPROVED ? (
+                      <StatusBadge tone="green">Approved</StatusBadge>
+                    ) : user.paymentStatus === PAYMENT_STATUS.PENDING ? (
+                      <StatusBadge tone="amber">Pending</StatusBadge>
+                    ) : (
+                      <StatusBadge tone="slate">No Record</StatusBadge>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    {user.premiumEntitlement === "na" ? (
+                      <span className="text-slate-500">—</span>
+                    ) : user.premiumEntitlement === "all-premium" ? (
+                      <StatusBadge tone="blue">All Premium Modules</StatusBadge>
+                    ) : (
+                      <StatusBadge tone="slate">None</StatusBadge>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      {user.isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserAccount(user)}
+                          className="rounded-lg border border-slate-500/70 px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-white/10"
+                        >
+                          Manage
+                        </button>
+                      ) : user.latestPayment ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPayment({ ...user.latestPayment, userName: user.name })}
+                            className="rounded-lg border border-amber-400 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/20"
+                          >
+                            View Payment
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedUserAccount(user)}
+                            className="rounded-lg border border-slate-500/70 px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-white/10"
+                          >
+                            View Details
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserAccount(user)}
+                          className="rounded-lg border border-slate-500/70 px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-white/10"
+                        >
+                          View Details
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  );
+
+  const renderSalesReport = () => (
+    <SectionCard title="Sales Report" subtitle="UI-only summary prepared for backend integration.">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-xl border border-white/10 bg-[#13243d] p-4">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Total Sales</p>
+          <p className="mt-2 text-2xl font-bold">PHP 0.00</p>
+        </article>
+        <article className="rounded-xl border border-white/10 bg-[#13243d] p-4">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Total Users</p>
+          <p className="mt-2 text-2xl font-bold">{metrics.userCount}</p>
+        </article>
+        <article className="rounded-xl border border-white/10 bg-[#13243d] p-4">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Modules Sold</p>
+          <p className="mt-2 text-2xl font-bold">{metrics.approvedPayments}</p>
+        </article>
+        <article className="rounded-xl border border-white/10 bg-[#13243d] p-4">
+          <p className="text-xs uppercase tracking-wide text-slate-400">One-Time Payments</p>
+          <p className="mt-2 text-2xl font-bold">{metrics.approvedPayments}</p>
+        </article>
+      </div>
+    </SectionCard>
+  );
+
+  const sectionRenderer = {
+    dashboard: renderDashboard,
+    modules: renderModules,
+    path: renderPath,
+    worksheets: renderWorksheets,
+    users: renderUsers,
+    "sales-report": renderSalesReport,
+  };
+
+  const renderActiveSection = sectionRenderer[activeSection] || renderDashboard;
+
+  return (
+    <section className="relative left-1/2 right-1/2 -mx-[50vw] min-h-dvh w-screen bg-[#07111f] text-slate-100">
+      <div className="grid min-h-dvh w-full grid-cols-1 lg:h-dvh lg:grid-cols-[280px_1fr]">
+        <aside className="border-r border-white/10 bg-[#0f1d32] p-4 lg:h-dvh lg:overflow-y-auto lg:p-5">
+          <h1 className="px-2 text-lg font-bold text-white">Admin Panel</h1>
+          <p className="px-2 pt-1 text-xs text-slate-400">Manage platform-wide content</p>
+
+          <nav className="mt-4 space-y-1">
+            {ADMIN_SECTIONS.map((item) => (
+              <Link
+                key={item.key}
+                href={SECTION_ROUTES[item.key]}
+                onClick={() => setActiveSection(item.key)}
+                className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                  activeSection === item.key ? "bg-amber-400/20 text-amber-300" : "text-slate-300 hover:bg-white/10"
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+        </aside>
+
+        <main className="space-y-5 bg-[#0f1d32] p-4 sm:p-5 lg:h-dvh lg:overflow-y-auto lg:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Admin Workspace</h2>
+              <p className="text-xs text-slate-400">Platform management console</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold text-white">{adminProfile.displayName}</p>
+              <p className="text-xs text-slate-400">{adminProfile.email}</p>
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                  {adminProfile.role}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAdminLogout}
+                  disabled={loggingOut}
+                  className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {loggingOut ? "Signing Out..." : "Log Out"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {renderActiveSection()}
+        </main>
+      </div>
+
+      {(isCreateModuleModalOpen || editingModule) && (
+        <style>{`@keyframes field-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}`}</style>
+      )}
+
+      {isCreateModuleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveNewModule} noValidate className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+            <h3 className="text-lg font-semibold">Create Module</h3>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div
+                key={`create-module-name-${moduleFieldErrors.moduleName ? moduleValidationAttempt : 0}`}
+                className={`relative ${moduleFieldErrors.moduleName ? moduleShakeClass : ""}`}
+              >
+                <span className="pointer-events-none absolute right-3 top-2 text-sm font-semibold text-rose-400">*</span>
+                <input
+                  required
+                  placeholder="Module Name"
+                  value={moduleForm.moduleName}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setModuleForm((prev) => ({ ...prev, moduleName: value }));
+                    if (value.trim()) {
+                      setModuleFieldErrors((prev) => ({ ...prev, moduleName: false }));
+                    }
+                  }}
+                  className={`w-full rounded-xl border bg-[#13243d] px-3 py-2 pr-7 outline-none focus:border-amber-400 ${
+                    moduleFieldErrors.moduleName ? "border-rose-400" : "border-white/20"
+                  }`}
+                />
+              </div>
+
+              <div className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2">
+                <p className="mb-2 text-xs text-slate-400">Type</p>
+                <div className="flex gap-3 text-sm">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="module-type"
+                      checked={moduleForm.type === MODULE_TYPE.FREE}
+                      onChange={() => {
+                        setModuleForm((prev) => ({ ...prev, type: MODULE_TYPE.FREE }));
+                      }}
+                    />
+                    Free
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="module-type"
+                      checked={moduleForm.type === MODULE_TYPE.PAID}
+                      onChange={() => setModuleForm((prev) => ({ ...prev, type: MODULE_TYPE.PAID }))}
+                    />
+                    Premium
+                  </label>
+                </div>
+              </div>
+
+              <div
+                key={`create-topic-title-${moduleFieldErrors.topicTitle ? moduleValidationAttempt : 0}`}
+                className={`relative md:col-span-2 ${moduleFieldErrors.topicTitle ? moduleShakeClass : ""}`}
+              >
+                <span className="pointer-events-none absolute right-3 top-2 text-sm font-semibold text-rose-400">*</span>
+                <input
+                  required
+                  placeholder="Open Module Title / Topic"
+                  value={moduleForm.topicTitle}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setModuleForm((prev) => ({ ...prev, topicTitle: value }));
+                    if (value.trim()) {
+                      setModuleFieldErrors((prev) => ({ ...prev, topicTitle: false }));
+                    }
+                  }}
+                  className={`w-full rounded-xl border bg-[#13243d] px-3 py-2 pr-7 outline-none focus:border-amber-400 ${
+                    moduleFieldErrors.topicTitle ? "border-rose-400" : "border-white/20"
+                  }`}
+                />
+              </div>
+
+              <select
+                value={moduleForm.status}
+                onChange={(event) => setModuleForm((prev) => ({ ...prev, status: event.target.value }))}
+                className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+              >
+                <option value={MODULE_STATUS.ACTIVE}>Active</option>
+                <option value={MODULE_STATUS.DRAFT}>Draft</option>
+              </select>
+
+              <label
+                key={`create-file-${moduleFieldErrors.resourceFile ? moduleValidationAttempt : 0}`}
+                className={`relative md:col-span-2 flex cursor-pointer items-center justify-center rounded-xl border border-dashed bg-[#13243d] px-3 py-2 text-sm text-slate-300 hover:border-amber-400 ${
+                  moduleFieldErrors.resourceFile ? `border-rose-400 ${moduleShakeClass}` : "border-white/30"
+                }`}
+              >
+                <span className="pointer-events-none absolute right-3 top-2 text-sm font-semibold text-rose-400">*</span>
+                Upload Module File (PDF, DOC, DOCX)
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  disabled={isCreateFileUploading}
+                  onChange={(event) => handleModuleFileUpload(event.target.files?.[0])}
+                />
+              </label>
+              {isCreateFileUploading ? (
+                <p className="md:col-span-2 text-xs text-amber-300">Uploading file, please wait...</p>
+              ) : null}
+              {moduleForm.resourceFileName && (
+                <p className="md:col-span-2 text-xs text-emerald-300">Attached file: {moduleForm.resourceFileName}</p>
+              )}
+              {statusMessage ? (
+                <p className="md:col-span-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  {statusMessage}
+                </p>
+              ) : null}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreateModuleModalOpen(false);
+                  setModuleFieldErrors({ moduleName: false, topicTitle: false, resourceFile: false });
+                }}
+                disabled={isCreateFileUploading}
+                className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCreateFileUploading}
+                className="rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-[#0b1728]"
+              >
+                {isCreateFileUploading ? "Uploading..." : "Create Module"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {isWorksheetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveWorksheetFromModal} className="w-full max-w-3xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+            <h3 className="text-lg font-semibold">{editingWorksheetId ? "Edit Worksheet" : "Create Worksheet"}</h3>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <input
+                required
+                placeholder="Worksheet title"
+                value={worksheetForm.title}
+                onChange={(event) => setWorksheetForm((prev) => ({ ...prev, title: event.target.value }))}
+                className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+              />
+
+              <div className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 md:col-span-2">
+                <p className="mb-2 text-xs text-slate-400">Worksheet Access</p>
+                <div className="flex gap-4 text-sm">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="worksheet-access-type"
+                      checked={worksheetForm.accessType === MODULE_TYPE.FREE}
+                      onChange={() => setWorksheetForm((prev) => ({ ...prev, accessType: MODULE_TYPE.FREE }))}
+                    />
+                    Free
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="worksheet-access-type"
+                      checked={worksheetForm.accessType === MODULE_TYPE.PAID}
+                      onChange={() => setWorksheetForm((prev) => ({ ...prev, accessType: MODULE_TYPE.PAID }))}
+                    />
+                    Premium
+                  </label>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] p-3">
+                <p className="mb-2 text-xs text-slate-400">Worksheet File (optional)</p>
+                <label className="flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/30 bg-[#0f1d32] px-3 py-2 text-sm text-slate-300 hover:border-amber-400">
+                  Upload File
+                  <input
+                    type="file"
+                    className="hidden"
+                    disabled={isWorksheetFileUploading}
+                    onChange={(event) => handleWorksheetFileUpload(event.target.files?.[0])}
+                  />
+                </label>
+                {isWorksheetFileUploading ? <p className="mt-2 text-xs text-amber-300">Attaching file...</p> : null}
+                {worksheetForm.resourceFileName ? (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-[#0f1d32] px-2 py-1.5 text-xs">
+                    <span className="truncate text-emerald-300">{worksheetForm.resourceFileName}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWorksheetForm((prev) => ({
+                          ...prev,
+                          resourceFileName: "",
+                          resourceFileType: "",
+                          resourceFileData: "",
+                        }))
+                      }
+                      className="rounded border border-rose-500/50 px-2 py-0.5 text-rose-300 hover:bg-rose-500/10"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-2 rounded-xl border border-white/10 bg-[#13243d] p-3 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-white">English / Korean Rows</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setWorksheetForm((prev) => ({
+                        ...prev,
+                        entries: [...(prev.entries || []), { number: "", korean: "" }],
+                      }))
+                    }
+                    className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20"
+                  >
+                    Add Row
+                  </button>
+                </div>
+
+                <div className="h-64 space-y-2 overflow-y-auto pr-1">
+                  {(worksheetForm.entries || []).map((entry, index) => (
+                    <div key={`worksheet-modal-row-${index}`} className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+                      <input
+                        placeholder="English (e.g. 1, 10, A)"
+                        value={entry.number}
+                        onChange={(event) =>
+                          setWorksheetForm((prev) => ({
+                            ...prev,
+                            entries: (prev.entries || []).map((row, rowIndex) =>
+                              rowIndex === index ? { ...row, number: event.target.value } : row
+                            ),
+                          }))
+                        }
+                        className="rounded-lg border border-white/20 bg-[#0f1d32] px-3 py-2 text-sm outline-none focus:border-amber-400"
+                      />
+                      <input
+                        placeholder="Korean (e.g. 일, 십, 영/공)"
+                        value={entry.korean}
+                        onChange={(event) =>
+                          setWorksheetForm((prev) => ({
+                            ...prev,
+                            entries: (prev.entries || []).map((row, rowIndex) =>
+                              rowIndex === index ? { ...row, korean: event.target.value } : row
+                            ),
+                          }))
+                        }
+                        className="rounded-lg border border-white/20 bg-[#0f1d32] px-3 py-2 text-sm outline-none focus:border-amber-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWorksheetForm((prev) => {
+                            const currentEntries = prev.entries || [];
+                            if (currentEntries.length <= 5) {
+                              const resetRow = currentEntries.map((row, rowIndex) =>
+                                rowIndex === index ? { ...row, number: "", korean: "" } : row
+                              );
+                              return { ...prev, entries: resetRow };
+                            }
+
+                            const nextEntries = currentEntries.filter((_, rowIndex) => rowIndex !== index);
+                            return {
+                              ...prev,
+                              entries: nextEntries.length >= 5 ? nextEntries : [...nextEntries, ...createWorksheetRows(5 - nextEntries.length)],
+                            };
+                          })
+                        }
+                        className="rounded-lg border border-rose-500/50 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/10"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsWorksheetModalOpen(false);
+                  setEditingWorksheetId("");
+                  setWorksheetForm(defaultWorksheet);
+                }}
+                className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-[#0b1728]">
+                {editingWorksheetId ? "Save Worksheet" : "Create Worksheet"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {editingModule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+            <h3 className="text-lg font-semibold">Edit Module</h3>
+            <p className="mt-1 text-xs text-amber-300">Module is currently inactive for safe editing.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <input
+                value={editingModule.moduleName}
+                onChange={(event) => setEditingModule((prev) => ({ ...prev, moduleName: event.target.value }))}
+                className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+              />
+              <div className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2">
+                <p className="mb-2 text-xs text-slate-400">Type</p>
+                <div className="flex gap-3 text-sm">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="edit-module-type"
+                      checked={editingModule.type === MODULE_TYPE.FREE}
+                      onChange={() => setEditingModule((prev) => ({ ...prev, type: MODULE_TYPE.FREE }))}
+                    />
+                    Free
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="edit-module-type"
+                      checked={editingModule.type === MODULE_TYPE.PAID}
+                      onChange={() => setEditingModule((prev) => ({ ...prev, type: MODULE_TYPE.PAID }))}
+                    />
+                    Premium
+                  </label>
+                </div>
+              </div>
+              <input
+                value={editingModule.topicTitle}
+                onChange={(event) => setEditingModule((prev) => ({ ...prev, topicTitle: event.target.value }))}
+                className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+              />
+
+              <select
+                value={editingModule.status || MODULE_STATUS.ACTIVE}
+                onChange={(event) => setEditingModule((prev) => ({ ...prev, status: event.target.value }))}
+                className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+                disabled={autoReactivateAfterEdit}
+              >
+                <option value={MODULE_STATUS.ACTIVE}>Active</option>
+                <option value={MODULE_STATUS.DRAFT}>Draft</option>
+              </select>
+
+              <label className="md:col-span-2 inline-flex items-center gap-2 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={autoReactivateAfterEdit}
+                  onChange={(event) => setAutoReactivateAfterEdit(event.target.checked)}
+                />
+                Auto activate after save
+              </label>
+
+              <label className="md:col-span-2 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-white/30 bg-[#13243d] px-3 py-2 text-sm text-slate-300 hover:border-amber-400">
+                Replace Module File (PDF, DOC, DOCX)
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  disabled={isEditFileUploading}
+                  onChange={(event) => handleModuleFileUpload(event.target.files?.[0], true)}
+                />
+              </label>
+              {isEditFileUploading ? (
+                <p className="md:col-span-2 text-xs text-amber-300">Uploading replacement file, please wait...</p>
+              ) : null}
+              {editingModule.resourceFileName && (
+                <p className="text-xs text-emerald-300">Attached file: {editingModule.resourceFileName}</p>
+              )}
+              {statusMessage ? (
+                <p className="md:col-span-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  {statusMessage}
+                </p>
+              ) : null}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingModule(null);
+                  setAutoReactivateAfterEdit(true);
+                }}
+                disabled={isEditFileUploading}
+                className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveEditedModule}
+                disabled={isEditFileUploading}
+                className="rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-[#0b1728]"
+              >
+                {isEditFileUploading ? "Uploading..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewModule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+            <h3 className="text-lg font-semibold">Module Preview</h3>
+            <div className="mt-3 space-y-2 text-sm text-slate-300">
+              <p>Name: {previewModule.moduleName}</p>
+              <p>Topic: {previewModule.topicTitle}</p>
+              <p>Type: {previewModule.type === MODULE_TYPE.PAID ? "Premium" : "Free"}</p>
+              <p>Status: {previewModule.status || MODULE_STATUS.ACTIVE}</p>
+              <p>File: {previewModule.resourceFileName || "-"}</p>
+            </div>
+
+            {previewModule.resourceFileData ? (
+              <a
+                href={previewModule.resourceFileData}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex rounded-lg border border-emerald-400/50 px-3 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/10"
+              >
+                Open Attached File
+              </a>
+            ) : null}
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPreviewModule(null)}
+                className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {moduleActionTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+            <h3 className="text-lg font-semibold">Module Actions</h3>
+            <p className="mt-1 text-sm text-slate-300">{moduleActionTarget.moduleName}</p>
+
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  beginModuleEdit(moduleActionTarget);
+                  setModuleActionTarget(null);
+                }}
+                className="block w-full rounded-lg border border-white/20 px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/10"
+              >
+                Inactive & Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewModule(moduleActionTarget);
+                  setModuleActionTarget(null);
+                }}
+                className="block w-full rounded-lg border border-white/20 px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/10"
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await deleteModuleWithStorage(moduleActionTarget);
+                  setModuleActionTarget(null);
+                }}
+                className="block w-full rounded-lg border border-rose-500/50 px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-500/10"
+              >
+                Delete
+              </button>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setModuleActionTarget(null)}
+                className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedUserAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white">User Details</h3>
+                <p className="mt-1 text-xs text-slate-400">Account management summary</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedUserAccount(null)}
+                className="rounded-lg border border-slate-500 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Name</p>
+                <p className="mt-1 text-sm font-semibold text-white">{selectedUserAccount.name || "Learner"}</p>
+              </article>
+              <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Email</p>
+                <p className="mt-1 break-all text-sm text-slate-200">{selectedUserAccount.email}</p>
+              </article>
+
+              <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Role</p>
+                <div className="mt-2">
+                  <StatusBadge tone={selectedUserAccount.isAdmin ? "amber" : "blue"}>
+                    {selectedUserAccount.isAdmin ? "Admin" : "User"}
+                  </StatusBadge>
+                </div>
+              </article>
+
+              <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Learning Access</p>
+                <div className="mt-2">
+                  {selectedUserAccount.learningAccess === "premium" ? (
+                    <StatusBadge tone="green">Premium Access</StatusBadge>
+                  ) : selectedUserAccount.learningAccess === "free" ? (
+                    <StatusBadge tone="slate">Free Plan</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="slate">Not Applicable</StatusBadge>
+                  )}
+                </div>
+              </article>
+
+              <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Payment Status</p>
+                <div className="mt-2">
+                  {selectedUserAccount.paymentStatus === "na" ? (
+                    <span className="text-slate-500">—</span>
+                  ) : selectedUserAccount.paymentStatus === PAYMENT_STATUS.APPROVED ? (
+                    <StatusBadge tone="green">Approved</StatusBadge>
+                  ) : selectedUserAccount.paymentStatus === PAYMENT_STATUS.PENDING ? (
+                    <StatusBadge tone="amber">Pending</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="slate">No Record</StatusBadge>
+                  )}
+                </div>
+              </article>
+
+              <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Premium Entitlement</p>
+                <div className="mt-2">
+                  {selectedUserAccount.premiumEntitlement === "na" ? (
+                    <span className="text-slate-500">—</span>
+                  ) : selectedUserAccount.premiumEntitlement === "all-premium" ? (
+                    <StatusBadge tone="blue">All Premium Modules</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="slate">None</StatusBadge>
+                  )}
+                </div>
+              </article>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-white/10 bg-[#13243d] p-3 text-xs text-slate-300">
+              <p>
+                Created: {selectedUserAccount.createdAt ? new Date(selectedUserAccount.createdAt).toLocaleString() : "-"}
+              </p>
+              {selectedUserAccount.latestPayment?.submittedAt ? (
+                <p className="mt-1">
+                  Latest Payment: {new Date(selectedUserAccount.latestPayment.submittedAt).toLocaleString()} via {selectedUserAccount.latestPayment.method || PAYMENT_METHODS[0]}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              {selectedUserAccount.latestPayment && !selectedUserAccount.isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPayment({ ...selectedUserAccount.latestPayment, userName: selectedUserAccount.name });
+                    setSelectedUserAccount(null);
+                  }}
+                  className="rounded-lg border border-amber-400 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/20"
+                >
+                  View Payment Proof
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setSelectedUserAccount(null)}
+                className="rounded-lg border border-slate-500 px-3 py-2 text-xs text-slate-300 hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <PaymentProofModal
+        payment={selectedPayment}
+        moduleName={
+          selectedPayment?.moduleId === ONE_TIME_PREMIUM_MODULE_ID
+            ? "All Premium Modules"
+            : moduleMap.get(selectedPayment?.moduleId)?.moduleName || "All Premium Modules"
+        }
+        onClose={() => setSelectedPayment(null)}
+        onApprove={async () => {
+          if (!selectedPayment) return;
+          await approvePaymentAndGrantAccessShared(selectedPayment.id);
+          setSelectedPayment(null);
+          setStatusMessage("Payment confirmed and module access granted.");
+          await refreshAll();
+        }}
+      />
+    </section>
+  );
+}
