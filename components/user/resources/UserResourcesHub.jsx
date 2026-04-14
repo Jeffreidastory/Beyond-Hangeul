@@ -25,6 +25,8 @@ const getFileKind = (fileType) => {
 export default function UserResourcesHub({
   isLight,
   resources,
+  modules,
+  worksheets,
   notice,
   onUploadFile,
   onPreviewFile,
@@ -60,13 +62,36 @@ export default function UserResourcesHub({
     });
   }, [query, resources.notes]);
 
+  const enhancedBookmarks = useMemo(() => {
+    return (resources.bookmarks || []).map((bookmark) => {
+      const lookupId = String(bookmark.itemId);
+      if (bookmark.type === "module") {
+        const module = modules?.find((item) => String(item.id) === lookupId);
+        return {
+          ...bookmark,
+          title: bookmark.title || module?.moduleName || "Module",
+          description: bookmark.description || module?.topicTitle || "Saved module",
+        };
+      }
+      if (bookmark.type === "worksheet") {
+        const worksheet = worksheets?.find((item) => String(item.id) === lookupId);
+        return {
+          ...bookmark,
+          title: bookmark.title || worksheet?.title || "Worksheet",
+          description: bookmark.description || worksheet?.description || "Saved worksheet",
+        };
+      }
+      return bookmark;
+    });
+  }, [resources.bookmarks, modules, worksheets]);
+
   const filteredBookmarks = useMemo(() => {
     const keyword = query.trim().toLowerCase();
-    if (!keyword) return resources.bookmarks || [];
-    return (resources.bookmarks || []).filter((bookmark) => {
+    if (!keyword) return enhancedBookmarks;
+    return enhancedBookmarks.filter((bookmark) => {
       return String(bookmark.title || "").toLowerCase().includes(keyword) || String(bookmark.description || "").toLowerCase().includes(keyword);
     });
-  }, [query, resources.bookmarks]);
+  }, [query, enhancedBookmarks]);
 
   const filteredReferences = useMemo(() => {
     const keyword = query.trim().toLowerCase();

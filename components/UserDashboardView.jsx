@@ -53,6 +53,7 @@ import HomeBannerCarousel from "@/components/user/dashboard/HomeBannerCarousel";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import UserResourcesHub from "@/components/user/resources/UserResourcesHub";
 import WorksheetPracticePanel from "@/components/user/worksheets/WorksheetPracticePanel";
+import useGlobalSearch from "@/hooks/useGlobalSearch";
 import { subscribeToTables } from "@/services/realtime/subscribeTables";
 import bhSlide from "@/app/images/BH-slide.png";
 import bhSlide1 from "@/app/images/BH-slide1.png";
@@ -117,6 +118,95 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
   const [worksheetScores, setWorksheetScores] = useState({});
   const [calendarMatrix, setCalendarMatrix] = useState(null);
   const realtimeReloadTimerRef = useRef(null);
+
+  const goalItems = useMemo(
+    () => (goalText ? [{ title: "Current Goal", description: goalText }] : []),
+    [goalText]
+  );
+
+  const {
+    query,
+    setQuery,
+    results: searchResults,
+    isOpen: isSearchOpen,
+    setIsOpen: setIsSearchOpen,
+    highlighted: searchHighlighted,
+    setHighlighted: setSearchHighlighted,
+    handleKeyDown: handleSearchKeyDown,
+  } = useGlobalSearch({
+    modules: learningData.modules,
+    worksheets: learningData.worksheets,
+    path: learningData.activeLearningPath,
+    resources: resourcesData.files,
+    goals: goalItems,
+    announcements: [],
+    payments: learningData.payments,
+  });
+
+  const handleSearchResultSelect = useCallback(
+    (result) => {
+      if (!result) return;
+      setIsSearchOpen(false);
+      setQuery("");
+      switch (result.type) {
+        case "Module":
+          setSelectedModuleId(result.data.id);
+          router.push("/dashboard?tab=modules");
+          break;
+        case "Worksheet":
+          setSelectedWorksheetId(result.data.id);
+          router.push(`/dashboard?tab=worksheets&worksheet=${result.data.id}`);
+          break;
+        case "Resource":
+          if (result.data.fileUrl) {
+            window.open(result.data.fileUrl, "_blank", "noopener,noreferrer");
+          } else {
+            router.push("/dashboard?tab=resources");
+          }
+          break;
+        case "Path":
+          router.push("/dashboard?tab=path");
+          break;
+        case "Goal":
+          router.push("/dashboard?tab=goal");
+          break;
+        case "Announcement":
+          router.push("/dashboard?tab=home");
+          break;
+        default:
+          break;
+      }
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    if (query.trim()) {
+      setIsSearchOpen(true);
+    } else {
+      setIsSearchOpen(false);
+    }
+  }, [query, setIsSearchOpen]);
+
+  useEffect(() => {
+    setSearchHighlighted(0);
+  }, [searchResults]);
+
+  const highlightMatches = useCallback((text, query) => {
+    if (!query || !text) return text;
+    const escaped = query.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escaped})`, "gi");
+    const parts = String(text).split(regex);
+    return parts.map((part, index) =>
+      regex.test(part) ? (
+        <span key={index} className="font-semibold text-amber-300">
+          {part}
+        </span>
+      ) : (
+        <span key={index}>{part}</span>
+      )
+    );
+  }, [query]);
 
   const loadDashboardData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
@@ -719,7 +809,6 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {allModules.map((module) => {
                 const isPremium = module.type === "paid";
-                const isSelected = selectedModuleId === module.id;
                 const moduleScore = moduleProgress[module.id] || null;
                 const moduleProgressPercent = moduleScore && moduleScore.completed
                   ? 100
@@ -734,23 +823,13 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                     key={module.id}
                     className={`relative flex h-full rounded-xl border p-4 transition ${
                       isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"
-                    } ${isSelected ? "ring-2 ring-amber-400/60" : ""}`}
+                    }`}
                   >
-
-                    {/* Only clickable if not locked */}
-                    {!(module.isLocked && isPremium && !hasPremiumWorksheetAccess) && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedModuleId(module.id)}
-                        className="absolute inset-0 rounded-xl"
-                        aria-label={`Select ${module.moduleName}`}
-                      />
-                    )}
 
 
                     {/* Only show badge for premium/free, no locked badge for non-premium users */}
 
-                    <div className="flex flex-col items-end gap-1 absolute right-3 top-3">
+                    <div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1 pointer-events-auto">
                       <span
                         className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                           isPremium
@@ -763,7 +842,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                       <button
                         type="button"
                         onClick={() => toggleBookmark("module", module.id)}
-                        className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                        className={`mt-1 inline-flex min-w-max items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition pointer-events-auto ${
                           bookmarkedLookup.has(`module:${module.id}`)
                             ? "border-amber-400/50 bg-amber-400/15 text-amber-300"
                             : isLight
@@ -779,15 +858,15 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
 
 
-                    <div className={`relative z-10 flex w-full flex-col ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "opacity-60 pointer-events-none text-white !text-white" : ""}`}>
-                      <h3 className={`pr-20 text-lg font-semibold ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "!text-white" : ""}`}>{module.moduleName}</h3>
-                      <p className={`mt-2 text-sm ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "!text-white" : isLight ? "text-slate-600" : "text-slate-300"}`}>{module.topicTitle}</p>
+                    <div className={`relative z-10 flex w-full flex-col ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "opacity-60 pointer-events-none text-white" : ""}`}>
+                      <h3 className={`pr-20 text-lg font-semibold ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : ""}`}>{module.moduleName}</h3>
+                      <p className={`mt-2 text-sm ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : isLight ? "text-slate-600" : "text-slate-300"}`}>{module.topicTitle}</p>
 
                       <div className="mt-auto pt-4">
 
                         {module.isInactive ? (
                           <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                            This module is temporarily inactive while admin is updating it.
+                            This module is temporarily inactive.
                           </p>
                         ) : !module.isLocked ? (
                           <>
@@ -1113,13 +1192,54 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
           </div>
           </div>
 
-          <div className={`mx-2 hidden w-full flex-1 items-center rounded-full border px-4 py-2 md:flex xl:mx-6 ${isLight ? "border-slate-200 bg-slate-100" : "border-white/10 bg-white/5"}`}>
+          <div className={`mx-2 hidden w-full flex-1 rounded-full border px-4 py-2 md:flex xl:mx-6 ${isLight ? "border-slate-200 bg-slate-100" : "border-white/10 bg-white/5"} relative`}>
             <Search size={16} className={isLight ? "text-slate-500" : "text-slate-400"} />
             <input
               type="text"
               placeholder="Search modules, worksheets, resources..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onFocus={() => { if (query.trim()) setIsSearchOpen(true); }}
+              onBlur={() => setTimeout(() => setIsSearchOpen(false), 150)}
+              onKeyDown={(event) => handleSearchKeyDown(event, (item) => handleSearchResultSelect(item))}
               className={`ml-2 w-full bg-transparent text-sm outline-none ${isLight ? "text-slate-800 placeholder:text-slate-500" : "text-white placeholder:text-slate-400"}`}
             />
+
+            {isSearchOpen && (
+              <div className="absolute left-0 right-0 top-full z-40 mt-2 rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur-xl">
+                {searchResults.length === 0 ? (
+                  <div className="p-4 text-sm text-slate-300">
+                    <p>No results found</p>
+                    <p className="mt-1 text-xs text-slate-500">Try another keyword</p>
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto">
+                    {searchResults.map((result, index) => (
+                      <button
+                        key={`${result.type}-${result.title}-${index}`}
+                        type="button"
+                        onMouseDown={() => handleSearchResultSelect(result)}
+                        onMouseEnter={() => setSearchHighlighted(index)}
+                        className={`flex w-full items-start gap-3 px-4 py-3 text-left transition ${
+                          index === searchHighlighted ? "bg-slate-800" : "hover:bg-white/5"
+                        }`}
+                      >
+                        <span className="mt-0.5 text-lg">{result.icon}</span>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-white">
+                            {highlightMatches(result.title, query)}
+                          </div>
+                          <div className="truncate text-xs text-slate-400">
+                            {result.type}{result.subtitle ? " • " : ""}
+                            {result.subtitle ? highlightMatches(result.subtitle, query) : null}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-3">

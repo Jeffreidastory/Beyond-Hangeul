@@ -88,9 +88,13 @@ export async function POST(request) {
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
+    const allowedImageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "tiff"];
+    const isImageType = String(file.type || "").startsWith("image/");
+    const extension = String(file.name || "").split('.').pop().toLowerCase();
+    const isAllowedImageExtension = allowedImageExtensions.includes(extension);
 
-    if (!allowedMime.includes(file.type)) {
-      return NextResponse.json({ error: "Only PDF, DOC, and DOCX files are supported." }, { status: 400 });
+    if (!allowedMime.includes(file.type) && !isImageType && !isAllowedImageExtension) {
+      return NextResponse.json({ error: "Only PDF, DOCX, and image files are supported." }, { status: 400 });
     }
 
     const bucket = process.env.NEXT_PUBLIC_SUPABASE_MODULES_BUCKET || "module-files";
