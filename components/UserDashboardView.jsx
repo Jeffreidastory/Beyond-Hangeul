@@ -860,7 +860,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
                     <div className={`relative z-10 flex w-full flex-col ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "opacity-60 pointer-events-none text-white" : ""}`}>
                       <h3 className={`pr-20 text-lg font-semibold ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : ""}`}>{module.moduleName}</h3>
-                      <p className={`mt-2 text-sm ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : isLight ? "text-slate-600" : "text-slate-300"}`}>{module.topicTitle}</p>
+                      <p className={`mt-2 text-sm italic ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : isLight ? "text-slate-600" : "text-slate-300"}`}>{module.topicTitle}</p>
 
                       <div className="mt-auto pt-4">
 
@@ -968,9 +968,14 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                     const progressPercent = sheetScore
                       ? Math.round((Number(sheetScore.quizPercent || 0) + Number(sheetScore.writingPercent || 0)) / 2)
                       : 0;
-                    const hasProgress =
+                    const hasStarted =
                       !!sheetScore &&
                       (Boolean(sheetScore.quizComplete) || progressPercent > 0);
+                    const isWorksheetPerfect =
+                      !!sheetScore &&
+                      Number(sheetScore.quizPercent || 0) === 100 &&
+                      Number(sheetScore.writingPercent || 0) === 100 &&
+                      Boolean(sheetScore.quizComplete);
 
                     return (
                       <article
@@ -1009,27 +1014,33 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                             />
                           </div>
                           <p className={`mt-1 text-[11px] ${isLight ? "text-slate-500" : "text-slate-400"}`}>
-                            {hasProgress ? "Saved from your worksheet practice" : "No worksheet progress yet"}
+                            {hasStarted ? "Saved from your worksheet practice" : "No worksheet progress yet"}
                           </p>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (sheetLocked) {
-                              setWorksheetNotice("This worksheet is Premium. Unlock premium access first.");
-                              setPaymentNotice("");
-                              setReceiptImage("");
-                              router.push(`/dashboard?tab=payment&module=${ONE_TIME_PREMIUM_MODULE_ID}`);
-                              return;
-                            }
-                            setWorksheetNotice("");
-                            setSelectedWorksheetId(sheet.id);
-                          }}
-                          className="mt-3 rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-[#0b1728] hover:bg-amber-300"
-                        >
-                          {sheetLocked ? "Unlock Premium" : "Open Worksheet"}
-                        </button>
+                        {isWorksheetPerfect ? (
+                          <div className={`mt-3 inline-flex items-center rounded-full px-3 py-2 text-xs font-semibold ${isLight ? "bg-emerald-100 text-emerald-800" : "bg-emerald-500/10 text-emerald-200"}`}>
+                            Completed
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sheetLocked) {
+                                setWorksheetNotice("This worksheet is Premium. Unlock premium access first.");
+                                setPaymentNotice("");
+                                setReceiptImage("");
+                                router.push(`/dashboard?tab=payment&module=${ONE_TIME_PREMIUM_MODULE_ID}`);
+                                return;
+                              }
+                              setWorksheetNotice("");
+                              setSelectedWorksheetId(sheet.id);
+                            }}
+                            className="mt-3 rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-[#0b1728] hover:bg-amber-300"
+                          >
+                            {sheetLocked ? "Unlock Premium" : hasStarted ? "Try Again" : "Open Worksheet"}
+                          </button>
+                        )}
                       </article>
                     );
                   })}
@@ -1041,7 +1052,10 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
               <div className="mt-4 space-y-3">
                 <button
                   type="button"
-                  onClick={() => setSelectedWorksheetId("")}
+                  onClick={() => {
+                    setSelectedWorksheetId("");
+                    router.push("/dashboard?tab=worksheets");
+                  }}
                   className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                     isLight ? "border-slate-300 bg-white text-slate-700" : "border-white/15 bg-[#0f1d32] text-slate-200"
                   }`}
@@ -1053,7 +1067,12 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                     This worksheet requires premium access.
                   </div>
                 ) : (
-                  <WorksheetPracticePanel worksheet={selectedWorksheet} isLight={isLight} onScoreChange={handleWorksheetScoreChange} />
+                  <WorksheetPracticePanel
+                    key={selectedWorksheetId}
+                    worksheet={selectedWorksheet}
+                    isLight={isLight}
+                    onScoreChange={handleWorksheetScoreChange}
+                  />
                 )}
               </div>
             )}

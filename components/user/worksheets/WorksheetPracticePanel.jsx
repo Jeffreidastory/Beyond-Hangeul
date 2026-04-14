@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Hangul from "hangul-js";
 
 const KEYBOARD_ROWS = [
@@ -72,6 +72,7 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
   const [quizSequence, setQuizSequence] = useState("");
   const [quizResults, setQuizResults] = useState({});
   const [shiftEnabled, setShiftEnabled] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
 
   const entries = useMemo(() => worksheet?.entries || [], [worksheet]);
   const activeQuizItem = entries[quizIndex] || null;
@@ -85,6 +86,24 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
     if (!entries.length) return 0;
     return Math.round((writingCompletedCount / entries.length) * 100);
   }, [entries.length, writingCompletedCount]);
+
+  const storageKey = useMemo(() => {
+    return worksheet?.id ? `bh-worksheet-practice-${worksheet.id}` : null;
+  }, [worksheet?.id]);
+
+  const findFirstIncompleteIndex = useCallback((results) => {
+    for (let index = 0; index < entries.length; index += 1) {
+      if (results[index] !== true) return index;
+    }
+    return 0;
+  }, [entries.length]);
+
+  const onlyCorrectResults = useCallback((results) => {
+    return Object.entries(results).reduce((acc, [key, value]) => {
+      if (value === true) acc[key] = true;
+      return acc;
+    }, {});
+  }, []);
 
   const submitWritingAnswer = () => {
     const expected = String(activeWritingItem?.korean || "");
@@ -173,14 +192,98 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
     return { correct, answered, total: entries.length, percent, complete };
   }, [quizResults, entries.length]);
 
+  const [persistedLoaded, setPersistedLoaded] = useState(false);
+
   useEffect(() => {
-    if (!worksheet?.id || typeof onScoreChange !== "function") return;
-    onScoreChange(worksheet.id, {
-      writingPercent,
-      quizPercent: quizScore.percent,
-      quizComplete: quizScore.complete,
-    });
-  }, [onScoreChange, quizScore.complete, quizScore.percent, worksheet?.id, writingPercent]);
+    if (!storageKey) {
+      setPersistedLoaded(true);
+      return;
+    }
+
+    setPersistedLoaded(false);
+
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) {
+        setPersistedLoaded(true);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      const persistedWriting = parsed?.writingResults || {};
+      const persistedQuiz = parsed?.quizResults || {};
+      const persistedActiveWritingIndex = Number.isInteger(parsed?.activeWritingIndex)
+        ? Number(parsed.activeWritingIndex)
+        : null;
+      const persistedQuizIndex = Number.isInteger(parsed?.quizIndex) ? Number(parsed.quizIndex) : null;
+
+      setWritingResults(persistedWriting);
+      setQuizResults(persistedQuiz);
+      setWritingSequences(parsed?.writingSequences || {});
+      setQuizSequence(parsed?.quizSequence || "");
+      setMode(parsed?.mode === "quiz" ? "quiz" : "writing");
+      setActiveWritingIndex(
+        persistedActiveWritingIndex !== null && persistedActiveWritingIndex >= 0 && persistedActiveWritingIndex < entries.length
+          ? persistedActiveWritingIndex
+          : findFirstIncompleteIndex(persistedWriting)
+      );
+      setQuizIndex(
+        persistedQuizIndex !== null && persistedQuizIndex >= 0 && persistedQuizIndex < entries.length
+          ? persistedQuizIndex
+          : findFirstIncompleteIndex(persistedQuiz)
+      );
+    } catch {
+      // ignore invalid saved state
+    } finally {
+      setPersistedLoaded(true);
+    }
+  }, [entries.length, findFirstIncompleteIndex, storageKey]);
+
+  useEffect(() => {
+    if (!worksheet?.id || !storageKey || !persistedLoaded) return;
+
+    const persisted = {
+      writingResults: onlyCorrectResults(writingResults),
+      quizResults: onlyCorrectResults(quizResults),
+      activeWritingIndex,
+      quizIndex,
+      mode,
+      writingSequences,
+      quizSequence,
+    };
+    window.localStorage.setItem(storageKey, JSON.stringify(persisted));
+
+    if (typeof onScoreChange === "function") {
+      const correctWriting = Object.values(writingResults).filter(Boolean).length;
+      const nextWritingPercent = entries.length ? Math.round((correctWriting / entries.length) * 100) : 0;
+      const correctQuiz = Object.values(quizResults).filter(Boolean).length;
+      const answeredQuizCount = Object.values(quizResults).filter((value) => value !== undefined).length;
+      const nextQuizPercent = entries.length ? Math.round((correctQuiz / entries.length) * 100) : 0;
+      const nextQuizComplete = entries.length > 0 && answeredQuizCount === entries.length;
+
+      onScoreChange(worksheet.id, {
+        writingPercent: nextWritingPercent,
+        quizPercent: nextQuizPercent,
+        quizComplete: nextQuizComplete,
+      });
+    }
+
+    setSaveStatus("Progress saved");
+    const timeout = window.setTimeout(() => setSaveStatus(""), 1400);
+    return () => window.clearTimeout(timeout);
+  }, [
+    activeWritingIndex,
+    entries.length,
+    mode,
+    onlyCorrectResults,
+    onScoreChange,
+    quizIndex,
+    quizResults,
+    quizSequence,
+    storageKey,
+    worksheet?.id,
+    writingResults,
+    writingSequences,
+  ]);
 
   const keyboardButtonClass = `rounded-lg border px-2 py-2 text-sm font-semibold transition ${
     isLight
@@ -290,6 +393,12 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
               </table>
             </div>
 
+            <div className="mt-2 h-4 flex justify-end">
+              {saveStatus ? (
+                <p className={`text-xs font-semibold ${isLight ? "text-emerald-700" : "text-emerald-300"}`}>{saveStatus}</p>
+              ) : null}
+            </div>
+
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -364,6 +473,12 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
                 "Enter"
               )}
             </button>
+          </div>
+
+          <div className="mt-2 h-4 flex justify-end">
+            {saveStatus ? (
+              <p className={`text-xs font-semibold ${isLight ? "text-emerald-700" : "text-emerald-300"}`}>{saveStatus}</p>
+            ) : null}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
