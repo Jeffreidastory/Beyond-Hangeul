@@ -63,25 +63,13 @@ export default function UserPaymentSection({
 
   return (
     <main className={`space-y-5 rounded-2xl p-5 lg:p-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}>
-      <section className={`rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
-        <h2 className="text-xl font-bold">Payment</h2>
-        <p className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-slate-300"}`}>
-          Submit your payment proof to unlock all premium modules with one-time access.
-        </p>
-      </section>
-
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <section className={`rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
           <h3 className="text-lg font-semibold">Premium Access Payment</h3>
           <div className="mt-3 space-y-3">
             <div className={`rounded-xl border p-3 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
               <p className={`text-xs uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>Selected Module</p>
-              <p className="mt-1 text-sm font-semibold">All Premium Modules (One-Time Access)</p>
-              {selectedModule?.moduleName ? (
-                <p className={`mt-1 text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>
-                  Triggered from: {selectedModule.moduleName}
-                </p>
-              ) : null}
+              <p className="mt-1 text-sm font-semibold">All Premium Modules (Lifetime Access Payments)</p>
             </div>
 
             <div className={`rounded-xl border p-3 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>

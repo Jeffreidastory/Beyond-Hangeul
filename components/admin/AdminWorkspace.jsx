@@ -128,6 +128,7 @@ export default function AdminWorkspace({
   const [worksheetFilterTab, setWorksheetFilterTab] = useState("all");
   const [worksheetSort, setWorksheetSort] = useState("newest");
   const [moduleActionTarget, setModuleActionTarget] = useState(null);
+  const [deletingModuleId, setDeletingModuleId] = useState(null);
   const [moduleFieldErrors, setModuleFieldErrors] = useState({
     moduleName: false,
     topicTitle: false,
@@ -638,16 +639,19 @@ export default function AdminWorkspace({
   };
 
   const deleteModuleWithStorage = async (module) => {
+    setDeletingModuleId(module.id);
     try {
       await deleteModuleFileFromStorage(module.resourceFileData || "");
     } catch (error) {
       setStatusMessage(error.message || "Unable to remove module file from storage.");
+      setDeletingModuleId(null);
       return;
     }
 
     await deleteModuleShared(module.id);
     setStatusMessage("Module deleted.");
     await refreshAll();
+    setDeletingModuleId(null);
   };
 
   const openCreateWorksheetModal = () => {
@@ -888,15 +892,29 @@ export default function AdminWorkspace({
                         <td className="px-3 py-3 text-slate-300">
                           {module.createdAt ? new Date(module.createdAt).toLocaleDateString() : "-"}
                         </td>
-                        <td className="relative px-3 py-3">
+                        <td className="relative px-3 py-3 flex gap-2">
                           <button
                             type="button"
-                            onClick={() => setModuleActionTarget(module)}
+                            onClick={() => beginModuleEdit(module)}
                             className="inline-flex items-center justify-center rounded-lg border border-white/20 p-2 text-slate-200 hover:bg-white/10"
-                            aria-label={`Edit actions for ${module.moduleName}`}
-                            title="Module actions"
+                            aria-label={`Edit module ${module.moduleName}`}
+                            title="Edit module"
                           >
                             <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteModuleWithStorage(module)}
+                            className={`inline-flex items-center justify-center rounded-lg border border-rose-500/50 p-2 text-rose-300 hover:bg-rose-500/10 ${deletingModuleId === module.id ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            disabled={deletingModuleId === module.id}
+                            aria-label={`Delete module ${module.moduleName}`}
+                            title="Delete module"
+                          >
+                            {deletingModuleId === module.id ? (
+                              <span className="flex items-center gap-1"><svg className="animate-spin h-4 w-4 mr-1 text-rose-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>Deleting...</span>
+                            ) : (
+                              'Delete'
+                            )}
                           </button>
                         </td>
                       </tr>
@@ -1721,57 +1739,7 @@ export default function AdminWorkspace({
         </div>
       )}
 
-      {moduleActionTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
-            <h3 className="text-lg font-semibold">Module Actions</h3>
-            <p className="mt-1 text-sm text-slate-300">{moduleActionTarget.moduleName}</p>
-
-            <div className="mt-4 space-y-2">
-              <button
-                type="button"
-                onClick={() => {
-                  beginModuleEdit(moduleActionTarget);
-                  setModuleActionTarget(null);
-                }}
-                className="block w-full rounded-lg border border-white/20 px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/10"
-              >
-                Inactive & Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPreviewModule(moduleActionTarget);
-                  setModuleActionTarget(null);
-                }}
-                className="block w-full rounded-lg border border-white/20 px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/10"
-              >
-                Preview
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  await deleteModuleWithStorage(moduleActionTarget);
-                  setModuleActionTarget(null);
-                }}
-                className="block w-full rounded-lg border border-rose-500/50 px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-500/10"
-              >
-                Delete
-              </button>
-            </div>
-
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setModuleActionTarget(null)}
-                className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Removed Module Actions modal: now edit opens directly, no preview or duplicate delete */}
 
       {selectedUserAccount && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
