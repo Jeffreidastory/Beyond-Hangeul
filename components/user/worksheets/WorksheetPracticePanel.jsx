@@ -437,9 +437,6 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
                     <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Step {activeWritingIndex + 1} / {entries.length}</p>
                     <p className="mt-2 text-xl font-semibold text-white">Write the letter</p>
                   </div>
-                  <div className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${showRomanization ? "bg-amber-400 text-[#0b1728]" : "bg-white/10 text-slate-200"}`}>
-                    {showRomanization ? "Romanization ON" : "Romanization OFF"}
-                  </div>
                 </div>
 
                 <div className="mt-5">
@@ -470,15 +467,24 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
                   <button
                     type="button"
                     onClick={showHint}
-                    className="rounded-full border border-white/10 bg-[#0b1629] px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#0b1629] px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
                   >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M9 18h6" />
+                      <path d="M12 2a6 6 0 0 0-4 10.9V14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1.1A6 6 0 0 0 12 2z" />
+                    </svg>
                     Show Hint
                   </button>
                   <button
                     type="button"
                     onClick={repeatLetter}
-                    className="rounded-full border border-white/10 bg-[#0b1629] px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#0b1629] px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
                   >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 4v6h6" />
+                      <path d="M20 20v-6h-6" />
+                      <path d="M5 12a7 7 0 0 1 14 0 7 7 0 0 1-14 0" />
+                    </svg>
                     Clear & Try Again
                   </button>
                 </div>
@@ -637,61 +643,19 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
         </div>
       )}
 
-      <div className={`mt-4 rounded-xl border p-3 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
-        <p className={`mb-2 text-xs uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>Korean Keyboard</p>
-
-        <div className="space-y-2">
-          {KEYBOARD_ROWS.map((row, rowIndex) => (
-            <div
-              key={rowIndex}
-              className={`grid gap-2 ${
-                rowIndex === 0
-                  ? "grid-cols-10"
-                  : rowIndex === 1
-                    ? "ml-3 grid-cols-9 sm:ml-4"
-                    : "ml-8 grid-cols-7 sm:ml-10"
-              }`}
-            >
-              {row.map((key) => (
-                <button key={key} type="button" onClick={() => onPressKey(key)} className={keyboardButtonClass}>
-                  {shiftEnabled && SHIFT_MAP[key] ? SHIFT_MAP[key] : key}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-2 grid grid-cols-4 gap-2">
-          <button
-            type="button"
-            onClick={() => setShiftEnabled((prev) => !prev)}
-            className={`${keyboardButtonClass} ${shiftEnabled ? "ring-2 ring-amber-400" : ""}`}
+      {worksheet?.resourceFileData ? (
+        <div className={`mt-4 rounded-xl border p-3 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
+          <p className="mb-2 text-xs uppercase tracking-wide text-slate-400">Worksheet Attachment</p>
+          <a
+            href={worksheet.resourceFileData}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex rounded-md border border-emerald-500/40 px-2 py-1 font-semibold text-emerald-300 hover:bg-emerald-500/10"
           >
-            Shift
-          </button>
-          <button type="button" onClick={() => keyboardInput("SPACE")} className={`${keyboardButtonClass} col-span-2`}>
-            Space
-          </button>
-          <button type="button" onClick={() => keyboardInput("BACKSPACE")} className={keyboardButtonClass}>
-            Backspace
-          </button>
+            {worksheet.resourceFileName || "Open attachment"}
+          </a>
         </div>
-
-        {worksheet?.resourceFileData ? (
-          <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${isLight ? "border-slate-200 bg-slate-50 text-slate-700" : "border-white/10 bg-[#13243d] text-slate-200"}`}>
-            <p className="font-semibold">Worksheet Attachment</p>
-            <a
-              href={worksheet.resourceFileData}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 inline-flex rounded-md border border-emerald-500/40 px-2 py-1 font-semibold text-emerald-300 hover:bg-emerald-500/10"
-            >
-              {worksheet.resourceFileName || "Open attachment"}
-            </a>
-          </div>
-        ) : null}
-
-      </div>
+      ) : null}
     </section>
   );
 }
