@@ -19,15 +19,13 @@ export async function POST(request) {
     const smtpUser = process.env.SMTP_USER;
     const smtpPass = (process.env.SMTP_PASS || "").replace(/\s+/g, "");
 
-    if (!smtpUser || !smtpPass) {
-      return NextResponse.json(
-        { error: "SMTP is not configured. Set SMTP_USER and SMTP_PASS in .env.local." },
-        { status: 500 }
-      );
-    }
-
     const otp = createOtp();
     setOtpForEmail(email.toLowerCase(), otp);
+
+    if (!smtpUser || !smtpPass) {
+      console.warn(`SMTP is not configured; generated OTP for ${email}: ${otp}`);
+      return NextResponse.json({ ok: true, warning: "SMTP is not configured. OTP was generated on the server." });
+    }
 
     const transporter = nodemailer.createTransport({
       host: smtpHost,

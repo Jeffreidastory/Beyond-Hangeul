@@ -35,6 +35,8 @@ export default function RegisterForm() {
     if (!response.ok) {
       throw new Error(payload.error || "Failed to send OTP.");
     }
+
+    return payload;
   };
 
   const verifyOtp = async () => {
@@ -78,9 +80,13 @@ export default function RegisterForm() {
 
       setLoading(true);
       try {
-        await requestOtp();
+        const payload = await requestOtp();
         setStep(3);
-        setMessage("OTP sent to your email.");
+        setMessage(
+          payload?.warning
+            ? `${payload.warning} Use the OTP from the server log during development.`
+            : "OTP sent to your email."
+        );
       } catch (requestError) {
         setError(requestError.message);
       } finally {
