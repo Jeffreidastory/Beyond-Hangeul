@@ -688,6 +688,7 @@ function normalizeWorksheetEntries(entries = []) {
     .map((row) => ({
       number: String(row?.number || "").trim(),
       korean: String(row?.korean || "").trim(),
+      romanization: String(row?.romanization || "").trim().toLowerCase(),
     }))
     .filter((row) => row.number && row.korean);
 }
@@ -698,14 +699,15 @@ function parseWorksheetContentRows(content = "") {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const match = line.match(/^(.+?)\s*[-:=>]\s*(.+)$/);
+      const match = line.match(/^(.+?)\s*[-:=>]\s*([^:-]+?)(?:\s*[-:=>]\s*(.+))?$/);
       if (match) {
         return {
           number: String(match[1] || "").trim(),
           korean: String(match[2] || "").trim(),
+          romanization: String(match[3] || "").trim().toLowerCase(),
         };
       }
-      return { number: "", korean: "" };
+      return { number: "", korean: "", romanization: "" };
     })
     .filter((row) => row.number && row.korean);
 }

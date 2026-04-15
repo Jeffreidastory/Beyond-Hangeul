@@ -53,7 +53,8 @@ const defaultModule = {
   status: MODULE_STATUS.ACTIVE,
 };
 
-const createWorksheetRows = (count = 5) => Array.from({ length: count }, () => ({ number: "", korean: "" }));
+const createWorksheetRows = (count = 5) =>
+  Array.from({ length: count }, () => ({ number: "", korean: "", romanization: "" }));
 
 const defaultWorksheet = {
   title: "",
@@ -913,6 +914,7 @@ export default function AdminWorkspace({
         ? worksheet.entries.map((entry) => ({
             number: String(entry.number || ""),
             korean: String(entry.korean || ""),
+            romanization: String(entry.romanization || ""),
           }))
         : createWorksheetRows(5),
     });
@@ -941,7 +943,11 @@ export default function AdminWorkspace({
   const saveWorksheetFromModal = async (event) => {
     event.preventDefault();
     const normalizedEntries = (worksheetForm.entries || [])
-      .map((row) => ({ number: String(row.number || "").trim(), korean: String(row.korean || "").trim() }))
+      .map((row) => ({
+        number: String(row.number || "").trim(),
+        korean: String(row.korean || "").trim(),
+        romanization: String(row.romanization || "").trim().toLowerCase(),
+      }))
       .filter((row) => row.number && row.korean);
 
     if (!worksheetForm.title.trim()) {
@@ -951,6 +957,12 @@ export default function AdminWorkspace({
 
     if (!normalizedEntries.length) {
       setStatusMessage("Add at least one valid English/Korean row.");
+      return;
+    }
+
+    const missingRomanization = normalizedEntries.some((row) => !row.romanization);
+    if (missingRomanization) {
+      setStatusMessage("Romanization is required for all worksheet rows.");
       return;
     }
 
@@ -1903,9 +1915,9 @@ export default function AdminWorkspace({
 
                 <div className="h-64 space-y-2 overflow-y-auto pr-1">
                   {(worksheetForm.entries || []).map((entry, index) => (
-                    <div key={`worksheet-modal-row-${index}`} className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+                    <div key={`worksheet-modal-row-${index}`} className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]">
                       <input
-                        placeholder="English (e.g. 1, 10, A)"
+                        placeholder="English (e.g. g, 1, A)"
                         value={entry.number}
                         onChange={(event) =>
                           setWorksheetForm((prev) => ({
@@ -1930,6 +1942,19 @@ export default function AdminWorkspace({
                         }
                         className="rounded-lg border border-white/20 bg-[#0f1d32] px-3 py-2 text-sm outline-none focus:border-amber-400"
                       />
+                      <input
+                        placeholder="Romanization (required)"
+                        value={entry.romanization}
+                        onChange={(event) =>
+                          setWorksheetForm((prev) => ({
+                            ...prev,
+                            entries: (prev.entries || []).map((row, rowIndex) =>
+                              rowIndex === index ? { ...row, romanization: event.target.value } : row
+                            ),
+                          }))
+                        }
+                        className="rounded-lg border border-white/20 bg-[#0f1d32] px-3 py-2 text-sm outline-none focus:border-amber-400"
+                      />
                       <button
                         type="button"
                         onClick={() =>
@@ -1937,7 +1962,7 @@ export default function AdminWorkspace({
                             const currentEntries = prev.entries || [];
                             if (currentEntries.length <= 5) {
                               const resetRow = currentEntries.map((row, rowIndex) =>
-                                rowIndex === index ? { ...row, number: "", korean: "" } : row
+                                rowIndex === index ? { ...row, number: "", korean: "", romanization: "" } : row
                               );
                               return { ...prev, entries: resetRow };
                             }

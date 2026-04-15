@@ -73,6 +73,8 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
   const [quizResults, setQuizResults] = useState({});
   const [shiftEnabled, setShiftEnabled] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const [showRomanization, setShowRomanization] = useState(true);
+  const romanizationToggleKey = useMemo(() => "bh-romanization-toggle", []);
 
   const entries = useMemo(() => worksheet?.entries || [], [worksheet]);
   const activeQuizItem = entries[quizIndex] || null;
@@ -90,6 +92,25 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
   const storageKey = useMemo(() => {
     return worksheet?.id ? `bh-worksheet-practice-${worksheet.id}` : null;
   }, [worksheet?.id]);
+
+  useEffect(() => {
+    try {
+      const storedValue = window.localStorage.getItem(romanizationToggleKey);
+      if (storedValue !== null) {
+        setShowRomanization(storedValue === "true");
+      }
+    } catch {
+      // ignore local storage failures
+    }
+  }, [romanizationToggleKey]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(romanizationToggleKey, String(showRomanization));
+    } catch {
+      // ignore write errors
+    }
+  }, [romanizationToggleKey, showRomanization]);
 
   const findFirstIncompleteIndex = useCallback((results) => {
     for (let index = 0; index < entries.length; index += 1) {
@@ -304,27 +325,53 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
       <h3 className="text-lg font-semibold">{worksheet.title}</h3>
       <p className={`mt-1 text-xs uppercase tracking-wide ${isLight ? "text-amber-700" : "text-amber-300"}`}>Writing + Quiz</p>
 
-      <div className={`mt-4 inline-flex rounded-full p-1 text-xs ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}>
-        <button
-          type="button"
-          onClick={() => setMode("writing")}
-          className={`rounded-full px-3 py-1.5 transition ${mode === "writing" ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-100" : "text-slate-300 hover:bg-white/10"}`}
-        >
-          Writing
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("quiz")}
-          className={`rounded-full px-3 py-1.5 transition ${mode === "quiz" ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-100" : "text-slate-300 hover:bg-white/10"}`}
-        >
-          Quiz
-        </button>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className={`inline-flex rounded-full p-1 text-xs ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}>
+          <button
+            type="button"
+            onClick={() => setMode("writing")}
+            className={`rounded-full px-3 py-1.5 transition ${mode === "writing" ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-100" : "text-slate-300 hover:bg-white/10"}`}
+          >
+            Writing
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("quiz")}
+            className={`rounded-full px-3 py-1.5 transition ${mode === "quiz" ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-100" : "text-slate-300 hover:bg-white/10"}`}
+          >
+            Quiz
+          </button>
+        </div>
+
+        <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs tracking-wide text-slate-200">
+          <span>Show Romanization</span>
+          <button
+            type="button"
+            onClick={() => setShowRomanization((prev) => !prev)}
+            className={`rounded-full px-2 py-1 font-semibold transition ${showRomanization ? "bg-amber-400 text-[#0b1728]" : isLight ? "bg-slate-100 text-slate-700" : "bg-white/10 text-slate-200"}`}
+          >
+            {showRomanization ? "ON" : "OFF"}
+          </button>
+        </div>
       </div>
 
       {mode === "writing" ? (
         <div className="mt-4 space-y-3">
           <div className={`rounded-xl border p-3 text-xs ${isLight ? "border-slate-200 bg-white text-slate-600" : "border-white/10 bg-[#0f1d32] text-slate-300"}`}>
             Progress {activeWritingIndex + 1}/{entries.length} • Correct {writingCompletedCount}/{entries.length}
+          </div>
+
+          <div className={`mt-4 rounded-xl border p-4 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
+            <div className="space-y-2">
+              {showRomanization && activeWritingItem?.romanization ? (
+                <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Romanization: {activeWritingItem.romanization}
+                </div>
+              ) : null}
+              <p className={`text-xs ${isLight ? "text-slate-600" : "text-slate-400"}`}>
+                Sound: {activeWritingItem?.number ? `'${activeWritingItem.number}'` : "n/a"}
+              </p>
+            </div>
           </div>
 
           <div className={`rounded-xl border p-4 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
@@ -338,7 +385,10 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
                       {activeWritingItem?.number}
                     </td>
                     <td className={`border-r px-3 py-3 font-semibold whitespace-nowrap ${isLight ? "border-slate-200 text-emerald-700" : "border-white/10 text-emerald-300"}`}>
-                      {formatPreferenceAnswer(activeWritingItem?.korean || "")}
+                      <div>{formatPreferenceAnswer(activeWritingItem?.korean || "")}</div>
+                      {showRomanization && activeWritingItem?.romanization ? (
+                        <div className="mt-1 text-sm text-slate-400">({activeWritingItem.romanization})</div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2">
                       <div className="relative">
@@ -350,7 +400,13 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
                             setWritingSequences((prev) => ({ ...prev, [activeWritingIndex]: nextSeq }));
                             setWritingResults((prev) => ({ ...prev, [activeWritingIndex]: undefined }));
                           }}
-                          placeholder="type answer place holder"
+                          placeholder={
+                            activeWritingItem?.korean
+                              ? showRomanization && activeWritingItem?.romanization
+                                ? `Type: ${activeWritingItem.korean} (${activeWritingItem.romanization})`
+                                : `Type: ${activeWritingItem.korean}`
+                              : "Type your answer"
+                          }
                           className={`w-full rounded-lg border px-3 py-2 pr-16 text-sm outline-none ${isLight ? "border-slate-300 bg-white text-slate-900" : "border-white/15 bg-[#0f1d32] text-slate-100"}`}
                         />
                         <button
