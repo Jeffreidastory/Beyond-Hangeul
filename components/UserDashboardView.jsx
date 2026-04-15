@@ -1134,19 +1134,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                 {learningData.worksheets.length === 0 ? <p className="mt-4 text-sm text-slate-400">No worksheets available yet.</p> : null}
               </>
             ) : (
-              <div className="mt-4 space-y-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedWorksheetId("");
-                    setTab("worksheets");
-                  }}
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-                    isLight ? "border-slate-300 bg-white text-slate-700" : "border-white/15 bg-[#0f1d32] text-slate-200"
-                  }`}
-                >
-                  Back to Worksheets
-                </button>
+              <div className="mt-4">
                 {isWorksheetLocked(selectedWorksheet) ? (
                   <div className={`rounded-xl border p-4 text-sm ${isLight ? "border-amber-300 bg-amber-50 text-amber-800" : "border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>
                     This worksheet requires premium access.

@@ -339,20 +339,6 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
   const currentSound = activeWritingItem?.number || "";
   const activeKey = currentLetter;
 
-  const showHint = () => {
-    if (!currentLetter) return;
-    setWritingSequences((prev) => ({ ...prev, [activeWritingIndex]: toSequence(currentLetter) }));
-  };
-
-  const repeatLetter = () => {
-    setWritingSequences((prev) => ({ ...prev, [activeWritingIndex]: "" }));
-    setWritingResults((prev) => {
-      const next = { ...prev };
-      delete next[activeWritingIndex];
-      return next;
-    });
-  };
-
   useEffect(() => {
     if (!activeWritingItem) return;
     setWritingResults((prev) => {
@@ -436,6 +422,22 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
               {showRomanization ? "ON" : "OFF"}
             </button>
           </div>
+
+          {worksheet?.resourceFileData ? (
+            <a
+              href={worksheet.resourceFileData}
+              target="_blank"
+              rel="noreferrer"
+              title="Download Worksheet"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0f1d32] text-slate-200 transition hover:bg-white/5"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </a>
+          ) : null}
         </div>
       </div>
 
@@ -465,31 +467,22 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[1.4fr_0.9fr]">
-            <div className="space-y-4">
-              <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-6 text-center">
-                <div className="text-[5rem] font-black leading-none text-amber-300 sm:text-[6rem]">{currentLetter || "ㄱ"}</div>
-                {showRomanization && currentRomanization ? (
-                  <p className="mt-3 text-lg text-slate-300">{currentRomanization}</p>
-                ) : null}
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-3xl border border-white/10 bg-[#0b1629] p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Hint</p>
-                  <p className="mt-2 text-sm text-slate-200">Type the shown Hangul character from the large sample. Correct answers unlock the next step.</p>
-                </div>
-                <div className="rounded-3xl border border-white/10 bg-[#0b1629] p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Sound</p>
-                  <p className="mt-2 text-sm text-slate-200">{currentSound || "—"}</p>
-                </div>
-              </div>
+            <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-6 text-center">
+              <div className="text-[5rem] font-black leading-none text-amber-300 sm:text-[6rem]">{currentLetter || "ㄱ"}</div>
+              {showRomanization && currentRomanization ? (
+                <p className="mt-3 text-lg text-slate-300">{currentRomanization}</p>
+              ) : null}
+              <p className="mt-3 text-sm text-slate-300">Sound: {currentSound || "—"}</p>
             </div>
 
-            <div className="space-y-4">
-              <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-5">
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Answer</p>
-                <p className="mt-2 text-xl font-semibold text-white">Write the letter</p>
-                <div className="mt-4 relative">
+            <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-5">
+              <div className="flex flex-col gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Answer</p>
+                  <p className="mt-2 text-xl font-semibold text-white">Write the letter</p>
+                </div>
+
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
                   <input
                     autoFocus
                     value={composeFromSequence(writingSequences[activeWritingIndex] || "")}
@@ -499,69 +492,13 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
                       setWritingResults((prev) => ({ ...prev, [activeWritingIndex]: undefined }));
                     }}
                     placeholder={displayPlaceholder}
-                    className={`w-full rounded-3xl border px-4 py-3 text-2xl font-semibold text-white outline-none transition ${inputBorderClass}`}
+                    className={`flex-1 rounded-3xl border px-4 py-3 text-2xl font-semibold text-white outline-none transition ${inputBorderClass}`}
                   />
-                  {(currentAnswerIsCorrect || currentAnswerIsIncorrect) && (
-                    <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center">
-                      {currentAnswerIsCorrect ? (
-                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20 6 9 17l-5-5" />
-                          </svg>
-                        </span>
-                      ) : (
-                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-rose-500/15 text-rose-300">
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 6 6 18" />
-                            <path d="m6 6 12 12" />
-                          </svg>
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className={`text-sm ${currentAnswerIsCorrect ? "text-emerald-300" : currentAnswerIsIncorrect ? "text-rose-300" : "text-slate-400"}`}>
-                    {currentAnswerIsCorrect
-                      ? "✅ Correct — continue when ready."
-                      : currentAnswerIsIncorrect
-                        ? "❌ Not quite, try again or use the hint."
-                        : "Enter the correct Hangul character above."}
-                  </p>
-                  <div className="grid grid-cols-2 gap-2 sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={showHint}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#0b1629] px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M9 18h6" />
-                        <path d="M12 2a6 6 0 0 0-4 10.9V14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1.1A6 6 0 0 0 12 2z" />
-                      </svg>
-                      Hint
-                    </button>
-                    <button
-                      type="button"
-                      onClick={repeatLetter}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#0b1629] px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M4 4v6h6" />
-                        <path d="M20 20v-6h-6" />
-                        <path d="M5 12a7 7 0 0 1 14 0 7 7 0 0 1-14 0" />
-                      </svg>
-                      Repeat
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     onClick={handleContinue}
                     disabled={!canContinue}
-                    className={`inline-flex items-center justify-center rounded-full px-6 py-3 text-sm font-semibold uppercase tracking-[0.15em] transition ${
+                    className={`inline-flex h-14 items-center justify-center rounded-3xl px-6 text-sm font-semibold uppercase tracking-[0.15em] transition ${
                       canContinue
                         ? "bg-amber-400 text-[#0b1728] shadow-lg shadow-amber-400/25 hover:bg-amber-300"
                         : "cursor-not-allowed bg-white/10 text-slate-500"
@@ -570,6 +507,10 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
                     {isLastWritingStep && currentAnswerIsCorrect ? "Finish" : "Continue"}
                   </button>
                 </div>
+
+                {currentAnswerIsIncorrect ? (
+                  <p className="text-sm text-rose-300">Incorrect answer, please try again.</p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -699,19 +640,6 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
         </div>
       )}
 
-      {worksheet?.resourceFileData ? (
-        <div className={`mt-4 rounded-xl border p-3 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
-          <p className="mb-2 text-xs uppercase tracking-wide text-slate-400">Worksheet Attachment</p>
-          <a
-            href={worksheet.resourceFileData}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex rounded-md border border-emerald-500/40 px-2 py-1 font-semibold text-emerald-300 hover:bg-emerald-500/10"
-          >
-            {worksheet.resourceFileName || "Open attachment"}
-          </a>
-        </div>
-      ) : null}
     </section>
   );
 }
