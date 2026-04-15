@@ -10,6 +10,7 @@ import {
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   Circle,
   CheckSquare,
   Compass,
@@ -89,6 +90,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") || "home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationCount, setNotificationCount] = useState(2);
 
@@ -102,7 +104,8 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
   }, []);
   const { isLight } = useTheme();
   const isWorksheetsTab = activeTab === "worksheets";
-  const collapsedWorksheetSidebar = isWorksheetsTab && !sidebarOpen;
+  const isSidebarExpanded = sidebarOpen || isSidebarHovered;
+  const isSidebarCollapsed = !isSidebarExpanded;
   const [learningData, setLearningData] = useState(
     initialLearningData || {
       modules: [],
@@ -128,6 +131,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
   const [worksheetNotice, setWorksheetNotice] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedWorksheetId, setSelectedWorksheetId] = useState("");
+  const [worksheetMode, setWorksheetMode] = useState("writing");
   const [moduleProgress, setModuleProgress] = useState({});
   const [worksheetScores, setWorksheetScores] = useState({});
   const [calendarMatrix, setCalendarMatrix] = useState(null);
@@ -643,12 +647,12 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
       },
       {
         label: "Study Streak",
-        value: `${stats.completedLessons > 0 ? Math.min(14, stats.completedLessons + 1) : 0} days`,
+        value: `${stats.studyStreak || 0} days`,
         hint: "Consistency builds fluency",
         icon: "🔥",
       },
     ],
-    [completedModulesCount, currentStep?.title, currentStepIndex, homeAverageScore, learningData.modules.length, pathSteps.length, stats.completedLessons]
+    [completedModulesCount, currentStep?.title, currentStepIndex, homeAverageScore, learningData.modules.length, pathSteps.length, stats.studyStreak]
   );
 
   const recommendedNextSteps = useMemo(
@@ -1034,12 +1038,89 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
       return (
         <main className={`space-y-5 rounded-2xl p-5 lg:p-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}>
           <section className={`rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
-            <h2 className="text-xl font-bold">Worksheets</h2>
-            {!selectedWorksheet ? (
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                {selectedWorksheet ? (
+                  <>
+                    <h2 className="text-xl font-bold">{selectedWorksheet.title}</h2>
+                    <p className="text-sm uppercase tracking-[0.35em] text-amber-300">Writing Practice</p>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-xl font-bold">Worksheets</h2>
+                    <p className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-slate-300"}`}>
+                      Select a worksheet card to start Writing and Quiz mode.
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {selectedWorksheet ? (
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <div className="inline-flex flex-wrap items-center gap-2 rounded-3xl border border-white/10 bg-[#0f1d32] px-3 py-2 text-sm text-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setWorksheetMode("writing")}
+                      className={`rounded-full px-3 py-2 text-sm font-semibold transition ${worksheetMode === "writing" ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
+                    >
+                      Writing
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWorksheetMode("quiz")}
+                      className={`rounded-full px-3 py-2 text-sm font-semibold transition ${worksheetMode === "quiz" ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
+                    >
+                      Quiz
+                    </button>
+                    {selectedWorksheet.resourceFileData ? (
+                      <a
+                        href={selectedWorksheet.resourceFileData}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Download Worksheet"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0f1d32] text-slate-200 transition hover:bg-white/5"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                      </a>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedWorksheetId("");
+                      setTab("worksheets");
+                    }}
+                    aria-label="Back to worksheets"
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-slate-200 transition ${isLight ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-100" : "border-white/15 bg-[#0f1d32] hover:bg-white/10"}`}
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            {selectedWorksheet ? (
+              <div className="mt-4">
+                {isWorksheetLocked(selectedWorksheet) ? (
+                  <div className={`rounded-xl border p-4 text-sm ${isLight ? "border-amber-300 bg-amber-50 text-amber-800" : "border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>
+                    This worksheet requires premium access.
+                  </div>
+                ) : (
+                  <WorksheetPracticePanel
+                    key={selectedWorksheetId}
+                    worksheet={selectedWorksheet}
+                    isLight={isLight}
+                    onScoreChange={handleWorksheetScoreChange}
+                    mode={worksheetMode}
+                    onModeChange={setWorksheetMode}
+                  />
+                )}
+              </div>
+            ) : (
               <>
-                <p className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-slate-300"}`}>
-                  Select a worksheet card to start Writing and Quiz mode.
-                </p>
                 {worksheetNotice ? (
                   <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
                     {worksheetNotice}
@@ -1133,21 +1214,6 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
                 {learningData.worksheets.length === 0 ? <p className="mt-4 text-sm text-slate-400">No worksheets available yet.</p> : null}
               </>
-            ) : (
-              <div className="mt-4">
-                {isWorksheetLocked(selectedWorksheet) ? (
-                  <div className={`rounded-xl border p-4 text-sm ${isLight ? "border-amber-300 bg-amber-50 text-amber-800" : "border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>
-                    This worksheet requires premium access.
-                  </div>
-                ) : (
-                  <WorksheetPracticePanel
-                    key={selectedWorksheetId}
-                    worksheet={selectedWorksheet}
-                    isLight={isLight}
-                    onScoreChange={handleWorksheetScoreChange}
-                  />
-                )}
-              </div>
             )}
           </section>
         </main>
@@ -1222,7 +1288,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
     return (
       <main className={`space-y-5 rounded-2xl p-5 lg:p-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}>
-        <HeroLearningCard userName={userName} isLight={isLight} />
+        <HeroLearningCard userName={userName} isLight={isLight} studyStreak={stats.studyStreak || 0} />
 
         <HomeBannerCarousel slides={homeBannerSlides} isLight={isLight} />
 
@@ -1383,19 +1449,23 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
         </div>
       </header>
 
-      <div className={`grid w-full grid-cols-1 gap-6 py-6 pl-0 pr-4 sm:pr-6 lg:pr-8 ${isWorksheetsTab ? "lg:grid-cols-[auto_1fr_320px]" : "lg:grid-cols-[260px_1fr_320px]"}`}>
+      <div className={`grid w-full grid-cols-1 gap-6 py-6 pl-0 pr-4 sm:pr-6 lg:pr-8 lg:grid-cols-[auto_1fr_320px]`}>
         <aside
+          onMouseEnter={() => setIsSidebarHovered(true)}
+          onMouseLeave={() => setIsSidebarHovered(false)}
           className={`group ${
             sidebarOpen ? "translate-x-0 opacity-100" : "-translate-x-full opacity-0 lg:translate-x-0 lg:opacity-100"
           } fixed left-0 z-30 border-r p-4 transition-all duration-300 ${navHeightClass} ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0b1728]"} ${
-            collapsedWorksheetSidebar ? "lg:w-20 lg:hover:w-65" : "lg:w-65"
-          } lg:sticky lg:self-start lg:top-22.25 lg:h-[calc(100vh-7rem)] lg:rounded-r-2xl lg:border ${isLight ? "lg:border-slate-200 lg:bg-white" : "lg:border-white/10 lg:bg-[#0f1d32]"}`}
+            isSidebarCollapsed ? "lg:w-20" : "lg:w-65"
+          } lg:hover:w-65 lg:sticky lg:self-start lg:top-22.25 lg:h-[calc(100vh-7rem)] lg:rounded-r-2xl lg:border ${isLight ? "lg:border-slate-200 lg:bg-white" : "lg:border-white/10 lg:bg-[#0f1d32]"}`}
         >
           <nav className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.key;
               const navItemClass = `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+                isSidebarCollapsed ? "justify-center" : "justify-start"
+              } ${
                 isActive
                   ? isLight
                     ? "bg-amber-100 text-amber-800"
@@ -1408,10 +1478,12 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
               return (
                 <div key={item.key} className="relative">
                   <button type="button" onClick={() => setTab(item.key)} className={navItemClass}>
-                    <Icon size={16} />
+                    <span className="inline-flex items-center justify-center rounded-full bg-transparent p-1">
+                      <Icon size={isSidebarCollapsed ? 20 : 22} />
+                    </span>
                     <span
                       className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${
-                        collapsedWorksheetSidebar
+                        isSidebarCollapsed
                           ? "max-w-0 opacity-0 lg:max-w-40 lg:group-hover:max-w-full lg:group-hover:opacity-100"
                           : "max-w-full opacity-100"
                       }`}

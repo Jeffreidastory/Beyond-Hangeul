@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import confetti from "canvas-confetti";
 import Hangul from "hangul-js";
 
 const KEYBOARD_ROWS = [
@@ -63,9 +64,14 @@ function isAnswerMatch(typedValue = "", expectedValue = "") {
   return accepted.includes(typed);
 }
 
-export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChange }) {
-  const [mode, setMode] = useState("writing");
-  const [activeWritingIndex, setActiveWritingIndex] = useState(0);
+export default function WorksheetPracticePanel({
+  worksheet,
+  isLight,
+  onScoreChange,
+  mode = "writing",
+  onModeChange = () => {},
+}) {
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [writingSequences, setWritingSequences] = useState({});
   const [writingResults, setWritingResults] = useState({});
   const [quizIndex, setQuizIndex] = useState(0);
@@ -73,12 +79,13 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
   const [quizResults, setQuizResults] = useState({});
   const [shiftEnabled, setShiftEnabled] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
-  const [showRomanization, setShowRomanization] = useState(true);
-  const romanizationToggleKey = useMemo(() => "bh-romanization-toggle", []);
+  const [completionMessage, setCompletionMessage] = useState("");
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [writingFinished, setWritingFinished] = useState(false);
 
   const entries = useMemo(() => worksheet?.entries || [], [worksheet]);
   const activeQuizItem = entries[quizIndex] || null;
-  const activeWritingItem = entries[activeWritingIndex] || null;
+  const activeWritingItem = entries[currentStepIndex] || null;
 
   const writingCompletedCount = useMemo(() => {
     return Object.values(writingResults).filter(Boolean).length;
@@ -89,28 +96,84 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
     return Math.round((writingCompletedCount / entries.length) * 100);
   }, [entries.length, writingCompletedCount]);
 
+  const totalSteps = entries.length;
+  const currentStepDisplay = totalSteps > 0 ? Math.min(Math.max(currentStepIndex + 1, 1), totalSteps) : 0;
+  const progressPercent = totalSteps ? Math.round((writingCompletedCount / totalSteps) * 100) : 0;
+
+  useEffect(() => {
+    console.log({ currentStepIndex, totalSteps });
+  }, [currentStepIndex, totalSteps]);
+
+  useEffect(() => {
+    if (!entries.length) {
+      if (currentStepIndex !== 0) {
+        setCurrentStepIndex(0);
+      }
+      return;
+    }
+
+    const boundedIndex = Math.min(Math.max(currentStepIndex, 0), entries.length - 1);
+    if (boundedIndex !== currentStepIndex) {
+      setCurrentStepIndex(boundedIndex);
+    }
+  }, [currentStepIndex, entries.length]);
+
+  useEffect(() => {
+    setCurrentStepIndex(0);
+    setWritingFinished(false);
+    setCompletionMessage("");
+    setShowConfetti(false);
+  }, [worksheet?.id]);
+
   const storageKey = useMemo(() => {
     return worksheet?.id ? `bh-worksheet-practice-${worksheet.id}` : null;
   }, [worksheet?.id]);
 
   useEffect(() => {
-    try {
-      const storedValue = window.localStorage.getItem(romanizationToggleKey);
-      if (storedValue !== null) {
-        setShowRomanization(storedValue === "true");
-      }
-    } catch {
-      // ignore local storage failures
-    }
-  }, [romanizationToggleKey]);
+    if (!showConfetti) return undefined;
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(romanizationToggleKey, String(showRomanization));
-    } catch {
-      // ignore write errors
+    const count = 200;
+    const defaults = {
+      origin: { y: 0.7 },
+      colors: ["#f59e0b", "#ec4899", "#22c55e", "#38bdf8", "#a855f7"],
+    };
+
+    function fire(particleRatio, opts) {
+      confetti({
+        ...defaults,
+        ...opts,
+        particleCount: Math.floor(count * particleRatio),
+      });
     }
-  }, [romanizationToggleKey, showRomanization]);
+
+    fire(0.25, {
+      spread: 26,
+      startVelocity: 55,
+    });
+    fire(0.2, {
+      spread: 60,
+    });
+    fire(0.35, {
+      spread: 100,
+      decay: 0.91,
+      scalar: 0.8,
+    });
+    fire(0.1, {
+      spread: 120,
+      startVelocity: 25,
+      decay: 0.92,
+      scalar: 1.2,
+    });
+    fire(0.1, {
+      spread: 120,
+      startVelocity: 45,
+    });
+
+    const timeout = window.setTimeout(() => setShowConfetti(false), 1800);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [showConfetti]);
 
   const findFirstIncompleteIndex = useCallback((results) => {
     for (let index = 0; index < entries.length; index += 1) {
@@ -128,17 +191,17 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
 
   const submitWritingAnswer = () => {
     const expected = String(activeWritingItem?.korean || "");
-    const typed = composeFromSequence(writingSequences[activeWritingIndex] || "").trim();
+    const typed = composeFromSequence(writingSequences[currentStepIndex] || "").trim();
     const isCorrect = isAnswerMatch(typed, expected);
 
-    setWritingResults((prev) => ({ ...prev, [activeWritingIndex]: isCorrect }));
+    setWritingResults((prev) => ({ ...prev, [currentStepIndex]: isCorrect }));
   };
 
   const keyboardInput = (rawKey) => {
-    if (!rawKey) return;
+    if (!rawKey || writingFinished) return;
 
     if (mode === "writing") {
-      const targetIndex = Math.max(0, activeWritingIndex);
+      const targetIndex = Math.max(0, currentStepIndex);
 
       setWritingSequences((prev) => {
         const current = String(prev[targetIndex] || "");
@@ -241,8 +304,11 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
       setQuizResults(persistedQuiz);
       setWritingSequences(parsed?.writingSequences || {});
       setQuizSequence(parsed?.quizSequence || "");
-      setMode(parsed?.mode === "quiz" ? "quiz" : "writing");
-      setActiveWritingIndex(
+      const persistedMode = parsed?.mode === "quiz" ? "quiz" : "writing";
+      if (persistedMode !== mode) {
+        onModeChange(persistedMode);
+      }
+      setCurrentStepIndex(
         persistedActiveWritingIndex !== null && persistedActiveWritingIndex >= 0 && persistedActiveWritingIndex < entries.length
           ? persistedActiveWritingIndex
           : findFirstIncompleteIndex(persistedWriting)
@@ -265,7 +331,7 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
     const persisted = {
       writingResults: onlyCorrectResults(writingResults),
       quizResults: onlyCorrectResults(quizResults),
-      activeWritingIndex,
+      activeWritingIndex: currentStepIndex,
       quizIndex,
       mode,
       writingSequences,
@@ -292,7 +358,7 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
     const timeout = window.setTimeout(() => setSaveStatus(""), 1400);
     return () => window.clearTimeout(timeout);
   }, [
-    activeWritingIndex,
+    currentStepIndex,
     entries.length,
     mode,
     onlyCorrectResults,
@@ -311,61 +377,90 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
       ? "border-slate-300 bg-white text-slate-800 hover:bg-slate-100 active:bg-yellow-400"
       : "border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700 active:bg-yellow-500 active:text-[#0b1728]"
   }`;
-  const highlightedKeyClass = (key) =>
-    key === activeKey
-      ? "ring-2 ring-amber-400 bg-amber-500/15"
-      : "";
+  const highlightedKeyClass = () => "";
 
   const currentLetter = activeWritingItem?.korean || "";
-  const currentRomanization = activeWritingItem?.romanization || "";
-  const currentAnswerSequence = writingSequences[activeWritingIndex] || "";
+  const currentAnswerSequence = writingSequences[currentStepIndex] || "";
   const currentAnswerText = composeFromSequence(currentAnswerSequence).trim();
   const expectedAnswer = String(activeWritingItem?.korean || "").trim();
   const currentAnswerIsCorrect = isAnswerMatch(currentAnswerText, expectedAnswer);
   const currentAnswerIsFilled = currentAnswerText.length > 0;
   const currentAnswerIsIncorrect = currentAnswerIsFilled && !currentAnswerIsCorrect;
-  const isLastWritingStep = activeWritingIndex === entries.length - 1;
-  const canContinue = currentAnswerIsCorrect;
-  const displayPlaceholder = currentLetter
-    ? showRomanization && currentRomanization
-      ? `Type: ${currentLetter} (${currentRomanization})`
-      : `Type: ${currentLetter}`
-    : "Type your answer";
+  const isLastWritingStep = totalSteps > 0 && currentStepIndex === totalSteps - 1;
+  const canContinue = !writingFinished && currentAnswerIsCorrect;
+  const nextCorrectCount =
+    Object.values(writingResults).filter(Boolean).length +
+    (currentAnswerIsCorrect && writingResults[currentStepIndex] !== true ? 1 : 0);
+  const hasPerfectScore = entries.length > 0 && nextCorrectCount === entries.length;
   const inputBorderClass = currentAnswerIsCorrect
     ? "border-emerald-400 focus:border-emerald-400"
     : currentAnswerIsIncorrect
       ? "border-rose-500 focus:border-rose-400"
       : "border-white/15 focus:border-amber-400";
   const currentSound = activeWritingItem?.number || "";
-  const activeKey = currentLetter;
 
   useEffect(() => {
-    if (!activeWritingItem) return;
-    setWritingResults((prev) => {
-      if (currentAnswerIsCorrect) {
-        if (prev[activeWritingIndex] === true) return prev;
-        return { ...prev, [activeWritingIndex]: true };
-      }
+    setWritingFinished(false);
+    setCompletionMessage("");
+    setShowConfetti(false);
+  }, [worksheet?.id]);
 
-      if (prev[activeWritingIndex] === true) {
-        const next = { ...prev };
-        delete next[activeWritingIndex];
-        return next;
-      }
-
-      return prev;
+  const restartWorksheet = () => {
+    console.log({
+      action: "restart",
+      step: currentStepIndex,
+      total: totalSteps,
+      score: writingCompletedCount,
+      isCompleted: writingFinished,
     });
-  }, [activeWritingIndex, currentAnswerIsCorrect, activeWritingItem]);
+    setCurrentStepIndex(0);
+    setWritingResults({});
+    setWritingSequences({});
+    setCompletionMessage("");
+    setShowConfetti(false);
+    setWritingFinished(false);
+    setSaveStatus("");
+    setQuizResults({});
+    setQuizSequence("");
+
+    try {
+      if (storageKey) {
+        window.localStorage.removeItem(storageKey);
+      }
+    } catch {
+      // ignore local storage failures
+    }
+  };
+
+  const startQuiz = () => {
+    const firstIncompleteQuizIndex = findFirstIncompleteIndex(quizResults);
+    goQuiz(firstIncompleteQuizIndex);
+    onModeChange("quiz");
+  };
+
+  const canAction = canContinue || writingFinished;
 
   const handleContinue = () => {
-    if (!currentAnswerIsCorrect) return;
+    if (!currentAnswerIsCorrect || writingFinished) return;
+
+    setWritingResults((prev) => {
+      if (prev[currentStepIndex] === true) return prev;
+      return { ...prev, [currentStepIndex]: true };
+    });
+
     if (isLastWritingStep) {
-      setSaveStatus("Writing practice complete!");
+      setShowConfetti(hasPerfectScore);
+      setCompletionMessage(hasPerfectScore ? "" : "Good job! Review incorrect answers to improve.");
+      setSaveStatus("");
+      setWritingFinished(true);
       return;
     }
 
-    const nextIndex = Math.min(entries.length - 1, activeWritingIndex + 1);
-    setActiveWritingIndex(nextIndex);
+    setCompletionMessage("");
+    setShowConfetti(false);
+
+    const nextIndex = Math.min(entries.length - 1, Math.max(currentStepIndex + 1, 0));
+    setCurrentStepIndex(nextIndex);
     setWritingSequences((prev) => ({ ...prev, [nextIndex]: prev[nextIndex] || "" }));
   };
 
@@ -379,137 +474,76 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
 
   return (
     <section className={`mx-auto max-w-5xl rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <button
-            type="button"
-            onClick={() => window.history.back()}
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#0f1d32] px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/5"
-          >
-            ← Back to Worksheets
-          </button>
-          <div className="mt-4 space-y-1">
-            <h3 className="text-2xl font-semibold tracking-tight">{worksheet.title}</h3>
-            <p className="text-sm uppercase tracking-[0.35em] text-amber-300">Writing Practice</p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex overflow-hidden rounded-full border border-white/10 bg-[#0f1d32] p-1">
-            <button
-              type="button"
-              onClick={() => setMode("writing")}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "writing" ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
-            >
-              Writing
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("quiz")}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "quiz" ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
-            >
-              Quiz
-            </button>
-          </div>
-
-          <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-[#0f1d32] px-4 py-2 text-sm text-slate-200">
-            <span className="font-medium">Show Romanization</span>
-            <button
-              type="button"
-              onClick={() => setShowRomanization((prev) => !prev)}
-              className={`rounded-full px-3 py-1 font-semibold transition ${showRomanization ? "bg-amber-400 text-[#0b1728]" : "bg-white/10 text-slate-200"}`}
-            >
-              {showRomanization ? "ON" : "OFF"}
-            </button>
-          </div>
-
-          {worksheet?.resourceFileData ? (
-            <a
-              href={worksheet.resourceFileData}
-              target="_blank"
-              rel="noreferrer"
-              title="Download Worksheet"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0f1d32] text-slate-200 transition hover:bg-white/5"
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-            </a>
-          ) : null}
-        </div>
-      </div>
 
       {mode === "writing" ? (
         <div className="space-y-5 max-w-6xl mx-auto">
-          <div className={`rounded-3xl border p-4 shadow-sm ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Step {activeWritingIndex + 1} of {entries.length}</p>
-                <p className="mt-2 text-xl font-semibold text-white">{writingCompletedCount}/{entries.length} correct</p>
-              </div>
-              <div className="hidden items-center gap-2 rounded-full bg-[#0f172c] px-3 py-2 text-xs text-slate-300 sm:flex">
-                {entries.map((_, index) => (
-                  <span
-                    key={index}
-                    className={`h-2.5 w-2.5 rounded-full ${index <= activeWritingIndex ? "bg-amber-400" : "bg-white/15"}`}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-amber-400 transition-all duration-500"
-                style={{ width: `${((activeWritingIndex + 1) / entries.length) * 100}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-5 xl:grid-cols-[1.4fr_0.9fr]">
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
             <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-6 text-center">
               <div className="text-[5rem] font-black leading-none text-amber-300 sm:text-[6rem]">{currentLetter || "ㄱ"}</div>
-              {showRomanization && currentRomanization ? (
-                <p className="mt-3 text-lg text-slate-300">{currentRomanization}</p>
-              ) : null}
               <p className="mt-3 text-sm text-slate-300">Sound: {currentSound || "—"}</p>
             </div>
 
             <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-5">
               <div className="flex flex-col gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Answer</p>
-                  <p className="mt-2 text-xl font-semibold text-white">Write the letter</p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Answer</p>
+                    <p className="mt-2 text-xl font-semibold text-white">Write the letter</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={restartWorksheet}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-400 bg-[#0f172c] text-amber-300 transition hover:border-amber-300 hover:text-amber-100"
+                    aria-label="Restart worksheet"
+                  >
+                    ↻
+                  </button>
                 </div>
 
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-                  <input
-                    autoFocus
-                    value={composeFromSequence(writingSequences[activeWritingIndex] || "")}
-                    onChange={(event) => {
-                      const nextSeq = toSequence(event.target.value);
-                      setWritingSequences((prev) => ({ ...prev, [activeWritingIndex]: nextSeq }));
-                      setWritingResults((prev) => ({ ...prev, [activeWritingIndex]: undefined }));
-                    }}
-                    placeholder={displayPlaceholder}
-                    className={`flex-1 rounded-3xl border px-4 py-3 text-2xl font-semibold text-white outline-none transition ${inputBorderClass}`}
-                  />
+                  <div className="relative flex-1 min-w-65">
+                    <input
+                      autoFocus
+                      disabled={writingFinished}
+                      value={composeFromSequence(writingSequences[currentStepIndex] || "")}
+                      onChange={(event) => {
+                        if (writingFinished) return;
+                        const nextSeq = toSequence(event.target.value);
+                        setWritingSequences((prev) => ({ ...prev, [currentStepIndex]: nextSeq }));
+                        setWritingResults((prev) => ({ ...prev, [currentStepIndex]: undefined }));
+                      }}
+                      className={`w-full rounded-3xl border px-4 py-3 pr-12 text-2xl font-semibold text-white outline-none transition ${inputBorderClass}`}
+                    />
+                    {currentAnswerIsCorrect ? (
+                      <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-emerald-400">
+                        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      </div>
+                    ) : null}
+                  </div>
                   <button
                     type="button"
-                    onClick={handleContinue}
-                    disabled={!canContinue}
+                    onClick={writingFinished ? startQuiz : handleContinue}
+                    disabled={!canAction}
                     className={`inline-flex h-14 items-center justify-center rounded-3xl px-6 text-sm font-semibold uppercase tracking-[0.15em] transition ${
-                      canContinue
+                      canAction
                         ? "bg-amber-400 text-[#0b1728] shadow-lg shadow-amber-400/25 hover:bg-amber-300"
                         : "cursor-not-allowed bg-white/10 text-slate-500"
                     }`}
                   >
-                    {isLastWritingStep && currentAnswerIsCorrect ? "Finish" : "Continue"}
+                    {writingFinished ? "Take Quiz" : isLastWritingStep ? "Finish" : "Continue"}
                   </button>
                 </div>
 
                 {currentAnswerIsIncorrect ? (
                   <p className="text-sm text-rose-300">Incorrect answer, please try again.</p>
+                ) : null}
+
+                {completionMessage ? (
+                  <div className="mt-2 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm font-semibold text-emerald-200">
+                    {completionMessage}
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -544,6 +578,19 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
               <button type="button" onClick={() => keyboardInput("BACKSPACE")} className={keyboardButtonClass}>
                 Backspace
               </button>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-3xl border border-white/10 bg-[#0f172c] px-4 py-2 text-sm text-slate-300 shadow-sm">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <span className="font-semibold text-white">{writingCompletedCount}/{entries.length} correct</span>
+              <span>Step {currentStepDisplay} of {totalSteps}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-amber-400 transition-all duration-500"
+                style={{ width: `${progressPercent}%` }}
+              />
             </div>
           </div>
         </div>

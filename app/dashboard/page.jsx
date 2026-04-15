@@ -156,6 +156,36 @@ export default async function DashboardPage() {
     progressRows.length > 0
       ? Math.round(progressRows.reduce((acc, item) => acc + (item.score || 0), 0) / progressRows.length)
       : 0;
+
+  const completedDayKeys = Array.from(
+    new Set(
+      progressRows
+        .filter((item) => item.completed && item.created_at)
+        .map((item) => {
+          const date = new Date(item.created_at);
+          if (Number.isNaN(date.getTime())) return null;
+          return date.toISOString().slice(0, 10);
+        })
+        .filter(Boolean)
+    )
+  ).sort((a, b) => b.localeCompare(a));
+
+  let studyStreak = 0;
+  if (completedDayKeys.length > 0) {
+    studyStreak = 1;
+    let previousDate = new Date(`${completedDayKeys[0]}T00:00:00.000Z`);
+
+    for (let index = 1; index < completedDayKeys.length; index += 1) {
+      const currentDate = new Date(`${completedDayKeys[index]}T00:00:00.000Z`);
+      const dayDifference = Math.round((previousDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (dayDifference !== 1) {
+        break;
+      }
+      studyStreak += 1;
+      previousDate = currentDate;
+    }
+  }
+
   const userName =
     `${user.user_metadata?.first_name || ""} ${user.user_metadata?.last_name || ""}`.trim() ||
     profile?.email?.split("@")[0] ||
@@ -195,6 +225,7 @@ export default async function DashboardPage() {
           enrolledModules: (lessons || []).length,
           completedLessons: completedCount,
           averageScore: avgScore,
+          studyStreak,
         }}
         recentActivity={recentActivity}
         initialLearningData={initialLearningData}

@@ -54,7 +54,7 @@ const defaultModule = {
 };
 
 const createWorksheetRows = (count = 5) =>
-  Array.from({ length: count }, () => ({ number: "", korean: "", romanization: "" }));
+  Array.from({ length: count }, () => ({ number: "", korean: "" }));
 
 const defaultWorksheet = {
   title: "",
@@ -914,7 +914,6 @@ export default function AdminWorkspace({
         ? worksheet.entries.map((entry) => ({
             number: String(entry.number || ""),
             korean: String(entry.korean || ""),
-            romanization: String(entry.romanization || ""),
           }))
         : createWorksheetRows(5),
     });
@@ -946,7 +945,6 @@ export default function AdminWorkspace({
       .map((row) => ({
         number: String(row.number || "").trim(),
         korean: String(row.korean || "").trim(),
-        romanization: String(row.romanization || "").trim().toLowerCase(),
       }))
       .filter((row) => row.number && row.korean);
 
@@ -960,11 +958,6 @@ export default function AdminWorkspace({
       return;
     }
 
-    const missingRomanization = normalizedEntries.some((row) => !row.romanization);
-    if (missingRomanization) {
-      setStatusMessage("Romanization is required for all worksheet rows.");
-      return;
-    }
 
     setIsSavingWorksheet(true);
     try {
@@ -1942,19 +1935,6 @@ export default function AdminWorkspace({
                         }
                         className="rounded-lg border border-white/20 bg-[#0f1d32] px-3 py-2 text-sm outline-none focus:border-amber-400"
                       />
-                      <input
-                        placeholder="Romanization (required)"
-                        value={entry.romanization}
-                        onChange={(event) =>
-                          setWorksheetForm((prev) => ({
-                            ...prev,
-                            entries: (prev.entries || []).map((row, rowIndex) =>
-                              rowIndex === index ? { ...row, romanization: event.target.value } : row
-                            ),
-                          }))
-                        }
-                        className="rounded-lg border border-white/20 bg-[#0f1d32] px-3 py-2 text-sm outline-none focus:border-amber-400"
-                      />
                       <button
                         type="button"
                         onClick={() =>
@@ -1962,7 +1942,7 @@ export default function AdminWorkspace({
                             const currentEntries = prev.entries || [];
                             if (currentEntries.length <= 5) {
                               const resetRow = currentEntries.map((row, rowIndex) =>
-                                rowIndex === index ? { ...row, number: "", korean: "", romanization: "" } : row
+                                rowIndex === index ? { ...row, number: "", korean: "" } : row
                               );
                               return { ...prev, entries: resetRow };
                             }
