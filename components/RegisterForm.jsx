@@ -84,7 +84,7 @@ export default function RegisterForm() {
         setStep(3);
         setMessage(
           payload?.warning
-            ? `${payload.warning} Use the OTP from the server log during development.`
+            ? payload.warning
             : "OTP sent to your email."
         );
       } catch (requestError) {

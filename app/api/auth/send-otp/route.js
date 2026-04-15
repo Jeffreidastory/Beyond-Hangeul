@@ -24,7 +24,10 @@ export async function POST(request) {
 
     if (!smtpUser || !smtpPass) {
       console.warn(`SMTP is not configured; generated OTP for ${email}: ${otp}`);
-      return NextResponse.json({ ok: true, warning: "SMTP is not configured. OTP was generated on the server." });
+      return NextResponse.json({
+        ok: true,
+        warning: "SMTP is not configured. OTP was generated on the server. Use the OTP from the server log during development.",
+      });
     }
 
     const transporter = nodemailer.createTransport({
