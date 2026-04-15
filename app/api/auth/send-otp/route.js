@@ -16,8 +16,8 @@ export async function POST(request) {
 
     const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
     const smtpPort = Number(process.env.SMTP_PORT || 587);
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPass = (process.env.SMTP_PASS || "").replace(/\s+/g, "");
+    const smtpUser = process.env.SMTP_USER || process.env.SMTP_USERNAME || process.env.SMTP_FROM;
+    const smtpPass = (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || "").trim();
 
     const otp = createOtp();
     setOtpForEmail(email.toLowerCase(), otp);
