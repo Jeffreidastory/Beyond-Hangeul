@@ -499,6 +499,11 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
     [learningData.worksheets]
   );
 
+  const sortedWorksheets = useMemo(
+    () => [...learningData.worksheets].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [learningData.worksheets]
+  );
+
   const homeAverageScore = useMemo(() => {
     const values = Object.values(worksheetScores || {}).filter(
       (item) => item && typeof item.quizPercent === "number" && typeof item.writingPercent === "number"
@@ -1040,7 +1045,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                 ) : null}
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {learningData.worksheets.map((sheet) => {
+                  {sortedWorksheets.map((sheet) => {
                     const sheetScore = worksheetScores[sheet.id] || null;
                     const sheetLocked = isWorksheetLocked(sheet);
                     const progressPercent = sheetScore
