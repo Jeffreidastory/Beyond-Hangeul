@@ -1,4 +1,7 @@
+import AuthNavbar from "@/components/AuthNavbar";
+import Image from "next/image";
 import AdminLoginForm from "@/components/AdminLoginForm";
+import BHLogo from "@/app/images/BH-logo.png";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +17,8 @@ export default function SecretAdminLoginPage() {
           padding-left: 0 !important;
           padding-right: 0 !important;
         }
-
       `}</style>
+      <AuthNavbar page="admin" />
 
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-32 right-10 h-80 w-80 rounded-full bg-[#0b4f8a]/35 blur-3xl" />
@@ -25,15 +28,16 @@ export default function SecretAdminLoginPage() {
 
       </div>
 
-      <div className="relative mx-auto flex min-h-[calc(100vh-73px)] w-full max-w-7xl items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md -translate-y-6 rounded-2xl border border-white/20 bg-[#0a1e35]/75 p-6 shadow-2xl backdrop-blur-sm sm:p-8">
-          <div className="pt-1 text-center">
-            <h1 className="text-4xl font-bold text-white font-headline">Admin Access</h1>
-            <p className="mt-2 text-xl font-medium text-white/80">Sign in with admin credentials</p>
+      <div className="relative mx-auto flex min-h-[calc(100vh-73px)] w-full max-w-7xl items-center justify-center px-4 pt-24 pb-6 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md rounded-3xl border border-white/20 bg-[#0a1e35]/80 p-6 shadow-2xl backdrop-blur-sm sm:p-8">
+          <div className="mx-auto mb-6 w-fit">
+            <Image src={BHLogo} alt="Beyond Hangeul logo" width={84} height={84} className="object-contain" />
           </div>
-          <div className="mt-6">
-            <AdminLoginForm />
+          <div className="mb-6 text-center">
+            <p className="text-2xl font-semibold uppercase tracking-[0.25em] text-amber-300">Admin Sign In</p>
+            <p className="mt-3 text-sm text-white/70">Please enter your details to sign in.</p>
           </div>
+          <AdminLoginForm />
         </div>
       </div>
     </section>

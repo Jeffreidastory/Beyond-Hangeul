@@ -2,25 +2,40 @@
 
 import { useEffect, useState } from "react";
 import UserPathTimeline from "@/components/path/UserPathTimeline";
-import { getActiveLearningPath, listModules, listWorksheets } from "@/services/dashboardDataService";
+import {
+  getActiveLearningPathShared,
+  listModulesShared,
+  listWorksheetsShared,
+} from "@/services/dashboardDataService";
+import { useRealtimeTables } from "@/services/realtime/useRealtimeTables";
 
 export default function UserPathRoute() {
   const [pathData, setPathData] = useState({ path: null, modules: [], worksheets: [] });
 
-  useEffect(() => {
-    const loadData = () => {
-      setPathData({
-        path: getActiveLearningPath(),
-        modules: listModules(),
-        worksheets: listWorksheets(),
-      });
-    };
+  const loadPathData = async () => {
+    try {
+      const [path, modules, worksheets] = await Promise.all([
+        getActiveLearningPathShared(),
+        listModulesShared(),
+        listWorksheetsShared(),
+      ]);
+      setPathData({ path, modules, worksheets });
+    } catch {
+      setPathData({ path: null, modules: [], worksheets: [] });
+    }
+  };
 
-    loadData();
-    const onStorage = () => loadData();
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+  useEffect(() => {
+    void loadPathData();
   }, []);
+
+  useRealtimeTables({
+    tables: ["learning_paths", "learning_path_steps"],
+    channelName: "user-path-page",
+    onChange: () => {
+      void loadPathData();
+    },
+  });
 
   return (
     <section className="mx-auto w-full max-w-4xl fade-rise px-4 py-6 sm:px-6 lg:px-8">

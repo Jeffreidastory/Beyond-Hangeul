@@ -71,16 +71,18 @@ export default function AdminLoginForm() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 pr-12 text-base text-white outline-none ring-2 ring-transparent transition focus:border-white/30 focus:ring-white/20"
+          className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 pr-14 text-base text-white outline-none ring-2 ring-transparent transition focus:border-white/30 focus:ring-white/20"
         />
-        <button
-          type="button"
-          onClick={() => setShowPassword((prev) => !prev)}
-          className="absolute right-3 top-[2.3rem] rounded-full p-1.5 text-slate-200/90 transition hover:bg-white/10 hover:text-white"
-          aria-label={showPassword ? "Hide password" : "Show password"}
-        >
-          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-        </button>
+        {password ? (
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute right-3 bottom-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-slate-200/90 transition hover:bg-white/15 hover:text-white"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        ) : null}
       </div>
 
       {error && <p className="rounded-lg bg-red-500/20 px-3 py-2 text-sm text-red-100">{error}</p>}

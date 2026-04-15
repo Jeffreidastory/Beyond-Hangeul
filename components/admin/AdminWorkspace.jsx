@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
@@ -15,16 +15,19 @@ import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import {
   ONE_TIME_PREMIUM_MODULE_ID,
   approvePaymentAndGrantAccessShared,
+  createContainerShared,
   createModuleShared,
   createWorksheetShared,
+  deleteContainerShared,
   deleteModuleShared,
   deleteWorksheetShared,
+  listContainersShared,
   listModulesShared,
   listPaymentsShared,
   listWorksheetsShared,
   listUsersWithStatusShared,
-  migrateLocalDashboardContentToShared,
   syncUsers,
+  updateContainerShared,
   updateModuleShared,
   updateWorksheetShared,
 } from "@/services/dashboardDataService";
@@ -36,7 +39,7 @@ import SalesOverviewCard from "@/components/admin/dashboard/SalesOverviewCard";
 import ModuleOverviewCard from "@/components/admin/dashboard/ModuleOverviewCard";
 import PaymentProofModal from "@/components/admin/payments/PaymentProofModal";
 import AdminPathManagement from "@/components/path/AdminPathManagement";
-import { subscribeToTables } from "@/services/realtime/subscribeTables";
+import { useRealtimeTables } from "@/services/realtime/useRealtimeTables";
 
 const defaultModule = {
   moduleName: "",
@@ -123,6 +126,10 @@ export default function AdminWorkspace({
   const [isWorksheetModalOpen, setIsWorksheetModalOpen] = useState(false);
   const [previewModule, setPreviewModule] = useState(null);
   const [moduleFilterTab, setModuleFilterTab] = useState("all");
+  const [isSavingContainer, setIsSavingContainer] = useState(false);
+  const [isSavingEditedModule, setIsSavingEditedModule] = useState(false);
+  const [containers, setContainers] = useState([]);
+  const canCreateModule = containers.length > 0;
   const [moduleSearch, setModuleSearch] = useState("");
   const [moduleSort, setModuleSort] = useState("newest");
   const [worksheetFilterTab, setWorksheetFilterTab] = useState("all");
@@ -134,6 +141,10 @@ export default function AdminWorkspace({
     topicTitle: false,
     resourceFile: false,
   });
+  const [isContainerModalOpen, setIsContainerModalOpen] = useState(false);
+  const [containerForm, setContainerForm] = useState({ id: "", title: "", subtitle: "", moduleIds: [] });
+  const [editingContainer, setEditingContainer] = useState(null);
+
   const [moduleValidationAttempt, setModuleValidationAttempt] = useState(0);
   const [autoReactivateAfterEdit, setAutoReactivateAfterEdit] = useState(true);
   const [isCreateFileUploading, setIsCreateFileUploading] = useState(false);
@@ -153,70 +164,216 @@ export default function AdminWorkspace({
     router.refresh();
   };
 
-  const refreshAll = async () => {
-    if (!hasAutoMigratedRef.current) {
-      hasAutoMigratedRef.current = true;
-      try {
-        await migrateLocalDashboardContentToShared();
-      } catch {
-        // Best-effort migration. Continue loading shared data even if migration fails.
-      }
-    }
-
+  const refreshAll = useCallback(async () => {
     syncUsers(initialUsers);
-    const [nextModules, nextUsers, nextPayments, nextWorksheets] = await Promise.all([
+
+    const results = await Promise.allSettled([
       listModulesShared(),
       listUsersWithStatusShared(initialUsers),
       listPaymentsShared(),
       listWorksheetsShared(),
+      listContainersShared(),
     ]);
 
-    setModules(nextModules);
-    setWorksheets(nextWorksheets);
-    setUsers(nextUsers);
-    setPayments(nextPayments);
+    const [modulesResult, usersResult, paymentsResult, worksheetsResult, containersResult] = results;
+    let refreshError = false;
+
+    if (modulesResult.status === "fulfilled") {
+      setModules(modulesResult.value);
+    } else {
+      console.error("Unable to refresh modules:", modulesResult.reason);
+      refreshError = true;
+      setModules([]);
+    }
+
+    if (usersResult.status === "fulfilled") {
+      setUsers(usersResult.value);
+    } else {
+      console.error("Unable to refresh users:", usersResult.reason);
+      refreshError = true;
+      setUsers([]);
+    }
+
+    if (paymentsResult.status === "fulfilled") {
+      setPayments(paymentsResult.value);
+    } else {
+      console.warn("Unable to refresh payments, continuing without payment records:", paymentsResult.reason);
+      setPayments([]);
+    }
+
+    if (worksheetsResult.status === "fulfilled") {
+      setWorksheets(worksheetsResult.value);
+    } else {
+      console.error("Unable to refresh worksheets:", worksheetsResult.reason);
+      refreshError = true;
+      setWorksheets([]);
+    }
+
+    if (containersResult.status === "fulfilled") {
+      setContainers(containersResult.value);
+    } else {
+      console.error("Unable to refresh containers:", containersResult.reason);
+      refreshError = true;
+      setContainers([]);
+    }
+
+    if (refreshError) {
+      setStatusMessage("Some shared admin data could not be loaded. Check backend connectivity.");
+    }
+  }, [initialUsers]);
+
+  const openCreateContainerModal = () => {
+    setEditingContainer(null);
+    setContainerForm({ id: "", title: "", subtitle: "", moduleIds: [] });
+    setIsContainerModalOpen(true);
   };
+
+  const beginContainerEdit = (container) => {
+    setEditingContainer(container);
+    setContainerForm({
+      id: container.id,
+      title: container.title,
+      subtitle: container.subtitle,
+      moduleIds: container.modules.map((module) => module.id),
+    });
+    setIsContainerModalOpen(true);
+  };
+
+  const saveContainer = async () => {
+    const trimmedTitle = containerForm.title.trim();
+    const selectedModuleIds = Array.isArray(containerForm.moduleIds) ? containerForm.moduleIds : [];
+
+    if (!trimmedTitle) {
+      setStatusMessage("Container title is required.");
+      return;
+    }
+
+    setIsSavingContainer(true);
+    const editingContainerId = editingContainer ? containerForm.id : undefined;
+    let actualContainerId = editingContainerId;
+
+    try {
+      if (editingContainer) {
+        await updateContainerShared(editingContainerId, {
+          title: trimmedTitle,
+          subtitle: containerForm.subtitle.trim(),
+        });
+      } else {
+        const createdContainer = await createContainerShared({
+          title: trimmedTitle,
+          subtitle: containerForm.subtitle.trim(),
+          createdAt: new Date().toISOString(),
+        });
+        actualContainerId = createdContainer.id;
+      }
+
+      for (const module of modules) {
+        if (selectedModuleIds.includes(module.id)) {
+          await updateModuleShared(module.id, {
+            containerId: actualContainerId,
+            containerTitle: trimmedTitle,
+            containerSubtitle: containerForm.subtitle.trim(),
+          });
+        } else if (editingContainer && module.containerId === actualContainerId) {
+          await updateModuleShared(module.id, {
+            containerId: "",
+            containerTitle: "",
+            containerSubtitle: "",
+          });
+        }
+      }
+
+      await refreshAll();
+      setStatusMessage(editingContainer ? "Container updated." : "Container created.");
+      setIsContainerModalOpen(false);
+      setEditingContainer(null);
+    } catch (error) {
+      console.error("Container save failed:", error);
+      const errorText =
+        error?.message ||
+        error?.details ||
+        error?.hint ||
+        (typeof error === "object" ? JSON.stringify(error) : String(error));
+      setStatusMessage(errorText || "Unable to save container.");
+    } finally {
+      setIsSavingContainer(false);
+    }
+  };
+
+  const removeContainer = async (container) => {
+    for (const module of modules) {
+      if (module.containerId === container.id) {
+        await updateModuleShared(module.id, {
+          containerId: "",
+          containerTitle: "",
+          containerSubtitle: "",
+        });
+      }
+    }
+    await deleteContainerShared(container.id);
+    setStatusMessage(`Container '${container.title}' removed.`);
+    await refreshAll();
+  };
+
 
   useEffect(() => {
     void refreshAll();
   }, []);
 
-  useEffect(() => {
-    // Realtime sync for admin modules, worksheets, users, payments, and access updates.
-    const scheduleReload = () => {
-      if (realtimeReloadTimerRef.current) {
-        clearTimeout(realtimeReloadTimerRef.current);
-      }
-      realtimeReloadTimerRef.current = setTimeout(() => {
-        realtimeReloadTimerRef.current = null;
-        void refreshAll();
-      }, 120);
-    };
+  const handleAdminRealtimeUpdate = useCallback(() => {
+    if (realtimeReloadTimerRef.current) {
+      clearTimeout(realtimeReloadTimerRef.current);
+    }
 
-    const unsubscribe = subscribeToTables({
-      tables: [
-        "learning_modules",
-        "learning_worksheets",
-        "learning_paths",
-        "learning_path_steps",
-        "payment_records",
-        "user_module_access",
-        "profiles",
-      ],
-      channelName: "admin-workspace",
-      onChange: scheduleReload,
-    });
+    realtimeReloadTimerRef.current = window.setTimeout(() => {
+      realtimeReloadTimerRef.current = null;
+      void refreshAll();
+    }, 120);
+  }, [refreshAll]);
 
-    return () => {
-      if (realtimeReloadTimerRef.current) {
-        clearTimeout(realtimeReloadTimerRef.current);
-        realtimeReloadTimerRef.current = null;
-      }
-      unsubscribe();
-    };
-  }, []);
+  useRealtimeTables({
+    tables: [
+      "learning_modules",
+      "learning_worksheets",
+      "learning_paths",
+      "learning_path_steps",
+      "payment_records",
+      "user_module_access",
+      "profiles",
+      "learning_containers",
+    ],
+    channelName: "admin-workspace",
+    onChange: handleAdminRealtimeUpdate,
+  });
 
   const moduleMap = useMemo(() => new Map(modules.map((item) => [item.id, item])), [modules]);
+  const moduleContainers = useMemo(() => {
+    const groups = new Map();
+
+    containers.forEach((container) => {
+      groups.set(container.id, {
+        id: container.id,
+        title: container.title,
+        subtitle: container.subtitle || "",
+        modules: [],
+        createdAt: container.createdAt || "",
+      });
+    });
+
+    modules.forEach((module) => {
+      if (!module.containerId || !module.containerTitle) return;
+      const existing = groups.get(module.containerId) || {
+        id: module.containerId,
+        title: module.containerTitle,
+        subtitle: module.containerSubtitle || "",
+        modules: [],
+      };
+      existing.modules.push(module);
+      groups.set(module.containerId, existing);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+  }, [modules, containers]);
   const moduleShakeClass = "motion-safe:animate-[field-shake_280ms_ease-in-out]";
 
   const metrics = useMemo(() => {
@@ -437,9 +594,13 @@ export default function AdminWorkspace({
       body,
     });
 
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload?.error || "Failed to upload module file.");
+      const apiError = payload?.error;
+      const errorMessage = typeof apiError === "string"
+        ? apiError
+        : apiError?.message || "Failed to upload module file.";
+      throw new Error(errorMessage);
     }
 
     const publicUrl = payload?.publicUrl || "";
@@ -573,27 +734,38 @@ export default function AdminWorkspace({
       setModuleValidationAttempt((prev) => prev + 1);
     }
 
+    if (!canCreateModule) {
+      setStatusMessage("Create at least one container before adding a module.");
+      return;
+    }
+
     if (!moduleName || !topicTitle || !hasValidFile) {
       setStatusMessage("Please complete all required fields: Module Name, Title/Topic, and upload a PDF/DOC/DOCX file.");
       return;
     }
 
-    await createModuleShared({
-      ...moduleForm,
-      moduleName,
-      topicTitle,
-      price: null,
-    });
-    setModuleFieldErrors({ moduleName: false, topicTitle: false, resourceFile: false });
-    setModuleValidationAttempt(0);
-    setModuleForm(defaultModule);
-    setIsCreateModuleModalOpen(false);
-    setStatusMessage("Module created.");
-    await refreshAll();
+    try {
+      await createModuleShared({
+        ...moduleForm,
+        moduleName,
+        topicTitle,
+        price: null,
+      });
+      setModuleFieldErrors({ moduleName: false, topicTitle: false, resourceFile: false });
+      setModuleValidationAttempt(0);
+      setModuleForm(defaultModule);
+      setIsCreateModuleModalOpen(false);
+      setStatusMessage("Module created.");
+      await refreshAll();
+    } catch (error) {
+      setStatusMessage(error?.message || "Unable to create module. Please try again.");
+    }
   };
 
   const saveEditedModule = async () => {
     if (!editingModule) return;
+    setIsSavingEditedModule(true);
+
     const existingModule = modules.find((module) => module.id === editingModule.id);
     const moduleName = editingModule.moduleName.trim();
     const topicTitle = editingModule.topicTitle.trim();
@@ -603,45 +775,69 @@ export default function AdminWorkspace({
 
     if (!moduleName || !topicTitle || !hasValidFile) {
       setStatusMessage("Edit requires Module Name, Title/Topic, and file.");
+      setIsSavingEditedModule(false);
       return;
     }
 
     const oldFileUrl = existingModule?.resourceFileData || "";
-    const nextFileUrl = editingModule.resourceFileData || "";
-    const shouldDeleteOldFile = Boolean(oldFileUrl) && oldFileUrl !== nextFileUrl;
-
-    if (shouldDeleteOldFile) {
-      try {
-        await deleteModuleFileFromStorage(oldFileUrl);
-      } catch (error) {
-        setStatusMessage(error.message || "Unable to remove old file from storage.");
-        return;
-      }
-    }
-
-    await updateModuleShared(editingModule.id, {
-      moduleName,
-      topicTitle,
-      resourceFileName: editingModule.resourceFileName || "",
-      resourceFileType: editingModule.resourceFileType || "",
-      resourceFileData: editingModule.resourceFileData || "",
-      type: editingModule.type,
-      price: null,
-      status: autoReactivateAfterEdit ? MODULE_STATUS.ACTIVE : editingModule.status || MODULE_STATUS.DRAFT,
+    const currentFileUrl = editingModule.resourceFileData || existingModule?.resourceFileData || "";
+    const currentFileName = editingModule.resourceFileName || existingModule?.resourceFileName || "";
+    const currentFileType = editingModule.resourceFileType || existingModule?.resourceFileType || "";
+    const shouldDeleteOldFile = Boolean(oldFileUrl) && oldFileUrl !== currentFileUrl;
+    const oldStoragePath = getStoragePathFromPublicUrl(oldFileUrl);
+    const isSharedFile = modules.some((module) => {
+      if (module.id === editingModule.id) return false;
+      const modulePath = getStoragePathFromPublicUrl(module.resourceFileData || "");
+      return modulePath && modulePath === oldStoragePath;
     });
-    setEditingModule(null);
-    setStatusMessage(
-      autoReactivateAfterEdit
-        ? "Module updated and automatically reactivated."
-        : "Module updated and kept inactive."
-    );
-    await refreshAll();
+
+    try {
+      if (shouldDeleteOldFile && !isSharedFile) {
+        try {
+          await deleteModuleFileFromStorage(oldFileUrl);
+        } catch (error) {
+          setStatusMessage(error.message || "Unable to remove old file from storage.");
+          return;
+        }
+      }
+
+      await updateModuleShared(editingModule.id, {
+        moduleName,
+        topicTitle,
+        resourceFileName: currentFileName,
+        resourceFileType: currentFileType,
+        resourceFileData: currentFileUrl,
+        type: editingModule.type,
+        price: null,
+        status: autoReactivateAfterEdit ? MODULE_STATUS.ACTIVE : editingModule.status || MODULE_STATUS.DRAFT,
+      });
+
+      await refreshAll();
+      setEditingModule(null);
+      setStatusMessage(
+        autoReactivateAfterEdit
+          ? "Module updated and automatically reactivated."
+          : "Module updated and kept inactive."
+      );
+    } catch (error) {
+      setStatusMessage(error?.message || "Unable to update module. Please try again.");
+    } finally {
+      setIsSavingEditedModule(false);
+    }
   };
 
   const deleteModuleWithStorage = async (module) => {
     setDeletingModuleId(module.id);
     try {
-      await deleteModuleFileFromStorage(module.resourceFileData || "");
+      const oldStoragePath = getStoragePathFromPublicUrl(module.resourceFileData || "");
+      const otherUses = modules.some((item) => {
+        if (item.id === module.id) return false;
+        const modulePath = getStoragePathFromPublicUrl(item.resourceFileData || "");
+        return modulePath && modulePath === oldStoragePath;
+      });
+      if (!otherUses) {
+        await deleteModuleFileFromStorage(module.resourceFileData || "");
+      }
     } catch (error) {
       setStatusMessage(error.message || "Unable to remove module file from storage.");
       setDeletingModuleId(null);
@@ -817,9 +1013,19 @@ export default function AdminWorkspace({
                 setModuleValidationAttempt(0);
                 setIsCreateModuleModalOpen(true);
               }}
-              className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-[#0b1728] hover:bg-amber-300"
+              disabled={!canCreateModule}
+              className={`rounded-xl px-4 py-2 text-sm font-semibold text-[#0b1728] ${
+                canCreateModule ? "bg-amber-400 hover:bg-amber-300" : "bg-slate-700 text-slate-500 cursor-not-allowed"
+              }`}
             >
               + Create Module
+            </button>
+            <button
+              type="button"
+              onClick={openCreateContainerModal}
+              className="rounded-xl border border-white/20 bg-[#13243d] px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10"
+            >
+              + Add Container
             </button>
 
             <input
@@ -850,6 +1056,47 @@ export default function AdminWorkspace({
               Premium
             </button>
           </div>
+
+          {moduleContainers.length > 0 && (
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              {moduleContainers.map((container) => (
+                <div key={container.id} className="rounded-2xl border border-white/10 bg-[#13243d] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">{container.title}</h3>
+                      {container.subtitle ? <p className="mt-1 text-sm text-slate-400">{container.subtitle}</p> : null}
+                      <p className="mt-2 text-xs text-slate-400">{container.modules.length} module{container.modules.length === 1 ? "" : "s"}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => beginContainerEdit(container)}
+                        className="rounded-lg border border-white/20 px-3 py-2 text-xs text-slate-200 hover:bg-white/10"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeContainer(container)}
+                        className="rounded-lg border border-rose-500/50 px-3 py-2 text-xs text-rose-300 hover:bg-rose-500/10"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  {container.modules.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
+                      {container.modules.map((module) => (
+                        <span key={module.id} className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                          {module.moduleName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="overflow-x-auto rounded-xl border border-white/10">
             <table className="w-full min-w-260 text-sm">
@@ -1431,6 +1678,81 @@ export default function AdminWorkspace({
         </div>
       )}
 
+      {isContainerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveContainer();
+            }}
+            className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5"
+          >
+            <h3 className="text-lg font-semibold">{editingContainer ? "Edit Container" : "Add Container"}</h3>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <input
+                required
+                placeholder="Container Title"
+                value={containerForm.title}
+                onChange={(event) => setContainerForm((prev) => ({ ...prev, title: event.target.value }))}
+                className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+              />
+              <input
+                placeholder="Container Subtitle (e.g. Week 1-2)"
+                value={containerForm.subtitle}
+                onChange={(event) => setContainerForm((prev) => ({ ...prev, subtitle: event.target.value }))}
+                className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+              />
+              <div className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] p-4">
+                <p className="mb-2 text-sm text-slate-400">Select Modules</p>
+                <div className="grid gap-2">
+                  {modules.map((module) => (
+                    <label
+                      key={module.id}
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0f1d32] px-3 py-2 text-sm text-slate-200"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={containerForm.moduleIds.includes(module.id)}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setContainerForm((prev) => {
+                            const nextModuleIds = checked
+                              ? [...prev.moduleIds, module.id]
+                              : prev.moduleIds.filter((id) => id !== module.id);
+                            return { ...prev, moduleIds: nextModuleIds };
+                          });
+                        }}
+                      />
+                      <span>{module.moduleName}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsContainerModalOpen(false);
+                  setEditingContainer(null);
+                }}
+                disabled={isSavingContainer}
+                className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingContainer}
+                className="rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-[#0b1728]"
+              >
+                {isSavingContainer ? "Saving..." : editingContainer ? "Save Container" : "Create Container"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {isWorksheetModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <form onSubmit={saveWorksheetFromModal} className="w-full max-w-3xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
@@ -1685,7 +2007,7 @@ export default function AdminWorkspace({
                   setEditingModule(null);
                   setAutoReactivateAfterEdit(true);
                 }}
-                disabled={isEditFileUploading}
+                disabled={isEditFileUploading || isSavingEditedModule}
                 className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
               >
                 Cancel
@@ -1693,10 +2015,10 @@ export default function AdminWorkspace({
               <button
                 type="button"
                 onClick={saveEditedModule}
-                disabled={isEditFileUploading}
+                disabled={isEditFileUploading || isSavingEditedModule}
                 className="rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-[#0b1728]"
               >
-                {isEditFileUploading ? "Uploading..." : "Save Changes"}
+                {isSavingEditedModule ? "Saving..." : isEditFileUploading ? "Uploading..." : "Save Changes"}
               </button>
             </div>
           </div>

@@ -11,7 +11,7 @@ import {
   listLearningPathsShared,
   saveLearningPathShared,
 } from "@/services/dashboardDataService";
-import { subscribeToTables } from "@/services/realtime/subscribeTables";
+import { useRealtimeTables } from "@/services/realtime/useRealtimeTables";
 
 const buildEmptyPathDraft = () => ({
   id: "",
@@ -50,19 +50,13 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
     void refreshPaths();
   }, []);
 
-  useEffect(() => {
-    const unsubscribe = subscribeToTables({
-      tables: ["learning_paths", "learning_path_steps"],
-      channelName: "admin-path-management",
-      onChange: () => {
-        void refreshPaths();
-      },
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+  useRealtimeTables({
+    tables: ["learning_paths", "learning_path_steps"],
+    channelName: "admin-path-management",
+    onChange: () => {
+      void refreshPaths();
+    },
+  });
 
   const stepCountLabel = useMemo(() => `${draft.steps?.length || 0} step${draft.steps?.length === 1 ? "" : "s"}`,
     [draft.steps]

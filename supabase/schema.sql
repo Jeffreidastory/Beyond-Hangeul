@@ -217,6 +217,21 @@ create table if not exists public.learning_modules (
   type text not null default 'free' check (type in ('free', 'paid')),
   price numeric,
   status text not null default 'active' check (status in ('active', 'draft')),
+  container_id uuid references public.learning_containers(id) on delete set null,
+  container_title text not null default '',
+  container_subtitle text not null default '',
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.learning_modules add column if not exists container_id uuid references public.learning_containers(id) on delete set null;
+alter table public.learning_modules add column if not exists container_title text not null default '';
+alter table public.learning_modules add column if not exists container_subtitle text not null default '';
+
+create table if not exists public.learning_containers (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  subtitle text not null default '',
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
@@ -308,6 +323,7 @@ create table if not exists public.learning_path_steps (
 );
 
 alter table public.learning_modules enable row level security;
+alter table public.learning_containers enable row level security;
 alter table public.payment_records enable row level security;
 alter table public.user_module_access enable row level security;
 alter table public.worksheet_progress enable row level security;
@@ -331,19 +347,20 @@ to authenticated
 using (public.is_admin())
 with check (public.is_admin());
 
-drop policy if exists "Users can read own payments" on public.payment_records;
-create policy "Users can read own payments"
-on public.payment_records
+drop policy if exists "Authenticated users can read learning containers" on public.learning_containers;
+create policy "Authenticated users can read learning containers"
+on public.learning_containers
 for select
-to authenticated
-using (user_id = auth.uid() or public.is_admin());
+  to authenticated
+  using (true);
 
-drop policy if exists "Users can insert own pending payments" on public.payment_records;
-create policy "Users can insert own pending payments"
-on public.payment_records
-for insert
-to authenticated
-with check (user_id = auth.uid() and status = 'pending');
+drop policy if exists "Admins can manage learning containers" on public.learning_containers;
+create policy "Admins can manage learning containers"
+on public.learning_containers
+for all
+  to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
 
 drop policy if exists "Users can update own pending payments" on public.payment_records;
 create policy "Users can update own pending payments"

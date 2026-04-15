@@ -1,6 +1,5 @@
 import { Inter, Montserrat, Poppins } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 
 const inter = Inter({
@@ -38,7 +37,6 @@ export default function RootLayout({ children }) {
     >
       <body className="text-foreground [font-family:var(--font-body)]">
         <ThemeProvider>
-          <Navbar />
           <main className="mx-auto w-full max-w-7xl px-4 pb-14 pt-8 sm:px-6 lg:px-8">
             {children}
           </main>

@@ -61,3 +61,17 @@ html {
     transform: translateY(0);
   }
 }
+
+input:-webkit-autofill,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: 0 0 0px 1000px rgba(15, 23, 42, 0.85) inset !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill:focus {
+  box-shadow: 0 0 0px 1000px rgba(15, 23, 42, 0.85) inset !important;
+}

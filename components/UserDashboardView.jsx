@@ -54,7 +54,7 @@ import { useTheme } from "@/components/theme/ThemeProvider";
 import UserResourcesHub from "@/components/user/resources/UserResourcesHub";
 import WorksheetPracticePanel from "@/components/user/worksheets/WorksheetPracticePanel";
 import useGlobalSearch from "@/hooks/useGlobalSearch";
-import { subscribeToTables } from "@/services/realtime/subscribeTables";
+import { useRealtimeTables } from "@/services/realtime/useRealtimeTables";
 import bhSlide from "@/app/images/BH-slide.png";
 import bhSlide1 from "@/app/images/BH-slide1.png";
 import bhSlide2 from "@/app/images/BH-slide2.png";
@@ -84,21 +84,33 @@ function getMonthMatrix() {
   return { now, cells };
 }
 
-export default function UserDashboardView({ userId, userName, userEmail, stats, recentActivity }) {
+export default function UserDashboardView({ userId, userName, userEmail, stats, recentActivity, initialLearningData = null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get("tab") || "home";
+  const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") || "home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationCount, setNotificationCount] = useState(2);
+
+  const setTab = useCallback((tabKey) => {
+    setActiveTab(tabKey);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tabKey);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, []);
   const { isLight } = useTheme();
-  const [learningData, setLearningData] = useState({
-    modules: [],
-    pathItems: [],
-    activeLearningPath: null,
-    worksheets: [],
-    payments: [],
-  });
+  const [learningData, setLearningData] = useState(
+    initialLearningData || {
+      modules: [],
+      pathItems: [],
+      activeLearningPath: null,
+      worksheets: [],
+      payments: [],
+      containers: [],
+    }
+  );
   const [resourcesData, setResourcesData] = useState({
     files: [],
     notes: [],
@@ -151,33 +163,33 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
       switch (result.type) {
         case "Module":
           setSelectedModuleId(result.data.id);
-          router.push("/dashboard?tab=modules");
+          setTab("modules");
           break;
         case "Worksheet":
           setSelectedWorksheetId(result.data.id);
-          router.push(`/dashboard?tab=worksheets&worksheet=${result.data.id}`);
+          setTab("worksheets");
           break;
         case "Resource":
           if (result.data.fileUrl) {
             window.open(result.data.fileUrl, "_blank", "noopener,noreferrer");
           } else {
-            router.push("/dashboard?tab=resources");
+            setTab("resources");
           }
           break;
         case "Path":
-          router.push("/dashboard?tab=path");
+          setTab("path");
           break;
         case "Goal":
-          router.push("/dashboard?tab=goal");
+          setTab("goal");
           break;
         case "Announcement":
-          router.push("/dashboard?tab=home");
+          setTab("home");
           break;
         default:
           break;
       }
     },
-    [router]
+    [setTab]
   );
 
   useEffect(() => {
@@ -208,16 +220,29 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
     );
   }, [query]);
 
-  const loadDashboardData = useCallback(async () => {
+  const refreshLearningData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
-    const nextLearningData = await getUserLearningDataShared(userId);
-    setLearningData(nextLearningData);
-    setModuleProgress(nextLearningData?.moduleProgress || {});
-    setWorksheetScores(nextLearningData?.worksheetScores || {});
-    setResourcesData(getUserResourcesData(userId));
-    const savedGoal = window.localStorage.getItem(`bh-goal-${userId}`) || "";
-    setGoalText(savedGoal);
-  }, [userEmail, userId]);
+
+    try {
+      const nextLearningData = await getUserLearningDataShared(userId);
+      if (!nextLearningData) return null;
+
+      setLearningData(nextLearningData);
+      setModuleProgress(nextLearningData?.moduleProgress || {});
+      setWorksheetScores(nextLearningData?.worksheetScores || {});
+      setResourcesData(getUserResourcesData(userId));
+      const savedGoal = window.localStorage.getItem(`bh-goal-${userId}`) || "";
+      setGoalText(savedGoal);
+      return nextLearningData;
+    } catch (error) {
+      console.warn("Unable to refresh shared dashboard data:", error);
+      return null;
+    }
+  }, [learningData.modules, userEmail, userId]);
+
+  const loadDashboardData = useCallback(async () => {
+    await refreshLearningData();
+  }, [refreshLearningData]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -229,51 +254,32 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
   useEffect(() => {
     void loadDashboardData();
-    const onStorage = () => {
-      void loadDashboardData();
-    };
-    window.addEventListener("storage", onStorage);
-
-    return () => {
-      window.removeEventListener("storage", onStorage);
-    };
   }, [loadDashboardData]);
 
-  useEffect(() => {
-    // Realtime sync for admin/user actions across modules, worksheets, path, payments, and access.
-    const scheduleReload = () => {
+  useRealtimeTables({
+    tables: [
+      "learning_modules",
+      "learning_worksheets",
+      "learning_paths",
+      "learning_path_steps",
+      "learning_containers",
+      "payment_records",
+      "user_module_access",
+      "worksheet_progress",
+      "module_progress",
+    ],
+    channelName: `user-dashboard-${userId}`,
+    onChange: () => {
       if (realtimeReloadTimerRef.current) {
         clearTimeout(realtimeReloadTimerRef.current);
       }
+
       realtimeReloadTimerRef.current = setTimeout(() => {
         realtimeReloadTimerRef.current = null;
         void loadDashboardData();
       }, 120);
-    };
-
-    const unsubscribe = subscribeToTables({
-      tables: [
-        "learning_modules",
-        "learning_worksheets",
-        "learning_paths",
-        "learning_path_steps",
-        "payment_records",
-        "user_module_access",
-        "worksheet_progress",
-        "module_progress",
-      ],
-      channelName: `user-dashboard-${userId}`,
-      onChange: scheduleReload,
-    });
-
-    return () => {
-      if (realtimeReloadTimerRef.current) {
-        clearTimeout(realtimeReloadTimerRef.current);
-        realtimeReloadTimerRef.current = null;
-      }
-      unsubscribe();
-    };
-  }, [loadDashboardData, userId]);
+    },
+  });
 
   const refreshResourcesData = () => {
     setResourcesData(getUserResourcesData(userId));
@@ -388,7 +394,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
   const openBookmarkItem = (bookmark) => {
     if (bookmark.type === "module") {
       setSelectedModuleId(bookmark.itemId);
-      router.push("/dashboard?tab=modules");
+      setTab("modules");
       return;
     }
 
@@ -403,12 +409,12 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
     if (isWorksheetLocked) {
       setWorksheetNotice("This worksheet is Premium. Unlock premium access first.");
-      router.push(`/dashboard?tab=payment&module=${ONE_TIME_PREMIUM_MODULE_ID}`);
+      setTab("payment");
       return;
     }
 
     setSelectedWorksheetId(bookmark.itemId);
-    router.push("/dashboard?tab=worksheets");
+    setTab("worksheets");
   };
 
   const removeUserBookmark = (bookmark) => {
@@ -550,11 +556,35 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
     });
   }, [userId]);
 
-  const handleOpenModuleResource = useCallback((module) => {
+  const storageBucket = process.env.NEXT_PUBLIC_SUPABASE_MODULES_BUCKET || "module-files";
+  const storagePublicPrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${storageBucket}/`;
+
+  const getStoragePathFromPublicUrl = useCallback((publicUrl) => {
+    if (!publicUrl || !storagePublicPrefix) return "";
+    if (!publicUrl.startsWith(storagePublicPrefix)) return "";
+    return decodeURIComponent(publicUrl.slice(storagePublicPrefix.length));
+  }, [storagePublicPrefix]);
+
+  const getAccessibleModuleFileUrl = useCallback(async (resourceFileData) => {
+    const storagePath = getStoragePathFromPublicUrl(resourceFileData);
+    if (!storagePath) return resourceFileData;
+
+    try {
+      const response = await fetch(`/api/module-file-url?path=${encodeURIComponent(storagePath)}`);
+      if (!response.ok) throw new Error("Unable to create module file access URL.");
+      const payload = await response.json();
+      return payload?.signedUrl || resourceFileData;
+    } catch {
+      return resourceFileData;
+    }
+  }, [getStoragePathFromPublicUrl]);
+
+  const handleOpenModuleResource = useCallback(async (module) => {
     if (!module?.resourceFileData) return;
     const isPdf = module.resourceFileType === "application/pdf" || /\.pdf$/i.test(module.resourceFileName || "");
+    const accessibleUrl = await getAccessibleModuleFileUrl(module.resourceFileData);
 
-    window.open(module.resourceFileData, "_blank", "noopener,noreferrer");
+    window.open(accessibleUrl, "_blank", "noopener,noreferrer");
 
     if (!isPdf) return;
 
@@ -582,7 +612,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
       return next;
     });
-  }, [userId]);
+  }, [getAccessibleModuleFileUrl, userId]);
 
   const summaryItems = useMemo(
     () => [
@@ -754,17 +784,17 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
     if (paymentResult?.blocked && paymentResult?.blockReason === "already-approved") {
       setPaymentNotice("Premium access already approved. New payment proof cannot be submitted unless admin resets your payment status.");
-      setLearningData(await getUserLearningDataShared(userId));
+      await refreshLearningData();
       return;
     }
 
     if (paymentResult?.blocked && paymentResult?.blockReason === "pending-verification") {
       setPaymentNotice("Payment already submitted. Please wait for admin verification.");
-      setLearningData(await getUserLearningDataShared(userId));
+      await refreshLearningData();
       return;
     }
 
-    setLearningData(await getUserLearningDataShared(userId));
+    await refreshLearningData();
     setPaymentNotice("Payment submitted. Waiting for admin verification for one-time premium access.");
     setReceiptImage("");
   };
@@ -779,6 +809,173 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
     setReceiptImage("");
   }, [activeTab, requestedPaymentModuleId]);
 
+  const renderModulesGrouped = () => {
+    const moduleGroupsMap = new Map();
+
+    (learningData.containers || []).forEach((container) => {
+      moduleGroupsMap.set(container.id, {
+        id: container.id,
+        title: container.title,
+        subtitle: container.subtitle || "",
+        modules: [],
+        createdAt: container.createdAt || "",
+      });
+    });
+
+    allModules.forEach((module) => {
+      if (!module.containerId) return;
+
+      let group = moduleGroupsMap.get(module.containerId);
+      if (!group) {
+        group = {
+          id: module.containerId,
+          title: module.containerTitle || "Untitled Container",
+          subtitle: module.containerSubtitle || "",
+          modules: [],
+          createdAt: "",
+        };
+        moduleGroupsMap.set(group.id, group);
+      }
+
+      group.modules.push(module);
+    });
+
+    const moduleGroups = Array.from(moduleGroupsMap.values()).sort(
+      (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+    );
+
+    const renderModuleCard = (module) => {
+      const isPremium = module.type === "paid";
+      const moduleScore = moduleProgress[module.id] || null;
+      const moduleProgressPercent = moduleScore && moduleScore.completed
+        ? 100
+        : Math.max(0, Math.min(100, Number(moduleScore?.progressPercent || 0)));
+      const isPdfResource = module.resourceFileType === "application/pdf" || /\.pdf$/i.test(module.resourceFileName || "");
+      const truncatedFileName = (module.resourceFileName || "").length > 34
+        ? `${String(module.resourceFileName).slice(0, 31)}...`
+        : module.resourceFileName;
+
+      return (
+        <article
+          key={module.id}
+          className={`relative flex h-full rounded-xl border p-4 transition ${
+            isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"
+          }`}
+        >
+          <div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1 pointer-events-auto">
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                isPremium
+                  ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                  : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+              }`}
+            >
+              {isPremium ? "Premium" : "Free"}
+            </span>
+            <button
+              type="button"
+              onClick={() => toggleBookmark("module", module.id)}
+              className={`mt-1 inline-flex min-w-max items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition pointer-events-auto ${
+                bookmarkedLookup.has(`module:${module.id}`)
+                  ? "border-amber-400/50 bg-amber-400/15 text-amber-300"
+                  : isLight
+                    ? "border-slate-300 text-slate-700 hover:bg-slate-100"
+                    : "border-white/15 text-slate-200 hover:bg-white/10"
+              }`}
+            >
+              {bookmarkedLookup.has(`module:${module.id}`) ? <BookmarkCheck size={12} /> : <Bookmark size={12} />}
+              Save
+            </button>
+          </div>
+
+          <div className={`relative z-10 flex w-full flex-col ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "opacity-60 pointer-events-none text-white" : ""}`}>
+            <h3 className={`pr-20 text-lg font-semibold ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : ""}`}>{module.moduleName}</h3>
+            <p className={`mt-2 text-sm italic ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : isLight ? "text-slate-600" : "text-slate-300"}`}>{module.topicTitle}</p>
+
+            <div className="mt-auto pt-4">
+              {module.isInactive ? (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  This module is temporarily inactive.
+                </p>
+              ) : !module.isLocked ? (
+                <>
+                  {module.resourceFileName && module.resourceFileData ? (
+                    <div className="flex min-h-5 items-center gap-2">
+                      {isPdfResource ? (
+                        moduleProgressPercent >= 100 ? (
+                          <CheckCircle2 size={16} className="text-emerald-400" aria-label="PDF completed" />
+                        ) : (
+                          <Circle size={16} className={isLight ? "text-slate-500" : "text-slate-300"} aria-label="PDF not completed" />
+                        )
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenModuleResource(module)}
+                        title={module.resourceFileName}
+                        className="max-w-full truncate text-left text-xs font-semibold text-emerald-300 underline decoration-emerald-400/60 underline-offset-2 hover:text-emerald-200"
+                      >
+                        {truncatedFileName}
+                      </button>
+                    </div>
+                  ) : module.resourceFileName ? (
+                    <p className="min-h-5 truncate text-xs text-amber-300" title={module.resourceFileName}>
+                      {truncatedFileName} (file unavailable)
+                    </p>
+                  ) : (
+                    <div className="min-h-5" />
+                  )}
+
+                  <div className="mt-3">
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span>{moduleProgressPercent}% complete</span>
+                      <span className="text-slate-400">{module.isLocked ? "Locked" : "Unlocked"}</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-emerald-400" style={{ width: `${moduleProgressPercent}%` }} />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="rounded-lg border border-slate-500/40 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">Locked premium module</p>
+              )}
+            </div>
+          </div>
+        </article>
+      );
+    };
+
+    const hasModuleGroups = moduleGroups.length > 0;
+    moduleGroups.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+
+    if (hasModuleGroups) {
+      return (
+        <div className="space-y-1">
+          {moduleGroups.map((group) => (
+            <div key={group.id} className="rounded-2xl border border-white/10 bg-[#0f172a] p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">{group.title}</h3>
+                  {group.subtitle ? <p className="mt-1 text-sm text-slate-400">{group.subtitle}</p> : null}
+                </div>
+              </div>
+              <div className="mt-3 grid gap-0.5 md:grid-cols-2 xl:grid-cols-3">
+                {group.modules.length > 0 ? (
+                  group.modules.map(renderModuleCard)
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-500/30 bg-slate-900/30 p-6 text-sm text-slate-300">
+                    No modules have been assigned yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const renderMainSection = () => {
     if (activeTab === "modules") {
       return (
@@ -787,145 +984,26 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold">Modules</h2>
-                <p className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-slate-300"}`}>Browse all modules here. Free and Premium badges are shown on each card.</p>
+                <p className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-slate-300"}`}>Modules are displayed using titles and cards assigned by the admin.</p>
               </div>
               {/* General Unlock/Purchase button for all locked modules (top right, only if any locked) */}
-              {allModules.some((module) => module.isLocked) && !hasPremiumWorksheetAccess && (
+              {allModules.some((module) => module.type === "paid" && module.isLocked) && !hasPremiumWorksheetAccess && (
                 <button
                   type="button"
                   onClick={() => {
                     setPaymentNotice("");
                     setReceiptImage("");
-                    router.push(`/dashboard?tab=payment`);
+                    setTab("payment");
                   }}
                   className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2 text-xs font-semibold text-[#0b1728] hover:bg-amber-300 shadow-lg"
                   style={{ minWidth: 170 }}
                 >
-                  {hasPendingPremiumPayment ? "Pending Verification" : "Unlock / Purchase Premium"}
+                  Unlock / Purchase
                 </button>
               )}
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {allModules.map((module) => {
-                const isPremium = module.type === "paid";
-                const moduleScore = moduleProgress[module.id] || null;
-                const moduleProgressPercent = moduleScore && moduleScore.completed
-                  ? 100
-                  : Math.max(0, Math.min(100, Number(moduleScore?.progressPercent || 0)));
-                const isPdfResource = module.resourceFileType === "application/pdf" || /\.pdf$/i.test(module.resourceFileName || "");
-                const truncatedFileName = (module.resourceFileName || "").length > 34
-                  ? `${String(module.resourceFileName).slice(0, 31)}...`
-                  : module.resourceFileName;
-
-                return (
-                  <article
-                    key={module.id}
-                    className={`relative flex h-full rounded-xl border p-4 transition ${
-                      isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"
-                    }`}
-                  >
-
-
-                    {/* Only show badge for premium/free, no locked badge for non-premium users */}
-
-                    <div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1 pointer-events-auto">
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                          isPremium
-                            ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
-                            : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
-                        }`}
-                      >
-                        {isPremium ? "Premium" : "Free"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleBookmark("module", module.id)}
-                        className={`mt-1 inline-flex min-w-max items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition pointer-events-auto ${
-                          bookmarkedLookup.has(`module:${module.id}`)
-                            ? "border-amber-400/50 bg-amber-400/15 text-amber-300"
-                            : isLight
-                              ? "border-slate-300 text-slate-700 hover:bg-slate-100"
-                              : "border-white/15 text-slate-200 hover:bg-white/10"
-                        }`}
-                      >
-                        {bookmarkedLookup.has(`module:${module.id}`) ? <BookmarkCheck size={12} /> : <Bookmark size={12} />}
-                        Save
-                      </button>
-                    </div>
-
-
-
-
-                    <div className={`relative z-10 flex w-full flex-col ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "opacity-60 pointer-events-none text-white" : ""}`}>
-                      <h3 className={`pr-20 text-lg font-semibold ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : ""}`}>{module.moduleName}</h3>
-                      <p className={`mt-2 text-sm italic ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : isLight ? "text-slate-600" : "text-slate-300"}`}>{module.topicTitle}</p>
-
-                      <div className="mt-auto pt-4">
-
-                        {module.isInactive ? (
-                          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                            This module is temporarily inactive.
-                          </p>
-                        ) : !module.isLocked ? (
-                          <>
-                            {module.resourceFileName && module.resourceFileData ? (
-                              <div className="flex min-h-5 items-center gap-2">
-                                {isPdfResource ? (
-                                  moduleProgressPercent >= 100 ? (
-                                    <CheckCircle2 size={16} className="text-emerald-400" aria-label="PDF completed" />
-                                  ) : (
-                                    <Circle size={16} className={isLight ? "text-slate-500" : "text-slate-300"} aria-label="PDF not completed" />
-                                  )
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenModuleResource(module)}
-                                  title={module.resourceFileName}
-                                  className="max-w-full truncate text-left text-xs font-semibold text-emerald-300 underline decoration-emerald-400/60 underline-offset-2 hover:text-emerald-200"
-                                >
-                                  {truncatedFileName}
-                                </button>
-                              </div>
-                            ) : module.resourceFileName ? (
-                              <p className="min-h-5 truncate text-xs text-amber-300" title={module.resourceFileName}>
-                                {truncatedFileName} (file unavailable)
-                              </p>
-                            ) : (
-                              <div className="min-h-5" />
-                            )}
-
-                            <div className="mt-3">
-                              <div className="mb-1 flex items-center justify-between text-xs">
-                                <span className={isLight ? "text-slate-600" : "text-slate-300"}>Module Progress</span>
-                                <span className="font-semibold">{moduleProgressPercent}%</span>
-                              </div>
-                              <div className={`h-2 w-full overflow-hidden rounded-full ${isLight ? "bg-slate-200" : "bg-white/10"}`}>
-                                <div
-                                  className="h-full rounded-full bg-emerald-400 transition-all"
-                                  style={{ width: `${moduleProgressPercent}%` }}
-                                />
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="min-h-5" />
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-
-            {/* Button now moved to container header above */}
-            </div>
-
-            {allModules.length === 0 ? (
-              <div className={`mt-4 rounded-xl border p-4 text-sm ${isLight ? "border-slate-200 bg-white text-slate-600" : "border-white/10 bg-[#0f1d32] text-slate-300"}`}>
-                No modules available yet.
-              </div>
-            ) : null}
+                        <div className="mt-4">{renderModulesGrouped()}</div>
           </section>
         </main>
       );
@@ -1030,7 +1108,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                                 setWorksheetNotice("This worksheet is Premium. Unlock premium access first.");
                                 setPaymentNotice("");
                                 setReceiptImage("");
-                                router.push(`/dashboard?tab=payment&module=${ONE_TIME_PREMIUM_MODULE_ID}`);
+                                setTab("payment");
                                 return;
                               }
                               setWorksheetNotice("");
@@ -1054,7 +1132,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                   type="button"
                   onClick={() => {
                     setSelectedWorksheetId("");
-                    router.push("/dashboard?tab=worksheets");
+                    setTab("worksheets");
                   }}
                   className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                     isLight ? "border-slate-300 bg-white text-slate-700" : "border-white/15 bg-[#0f1d32] text-slate-200"
@@ -1332,10 +1410,10 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
               return (
                 <div key={item.key} className="relative">
-                  <Link href={item.href} className={navItemClass}>
+                  <button type="button" onClick={() => setTab(item.key)} className={navItemClass}>
                     <Icon size={16} />
                     {item.label}
-                  </Link>
+                  </button>
                 </div>
               );
             })}

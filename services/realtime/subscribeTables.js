@@ -28,6 +28,7 @@ export function subscribeToTables({
   channel.subscribe();
 
   return () => {
+    channel.unsubscribe();
     supabase.removeChannel(channel);
   };
 }

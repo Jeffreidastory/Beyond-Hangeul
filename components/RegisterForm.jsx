@@ -134,40 +134,28 @@ export default function RegisterForm() {
       <div>
         <div className="flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
-            <div
-              className={`flex h-11 w-11 items-center justify-center rounded-full text-base font-semibold ${
-                step >= 1 ? "bg-gradient-to-br from-[#ff8f5a] to-[#f6c431] text-white" : "bg-zinc-200 text-zinc-500"
-              }`}
-            >
-              1
-            </div>
-            <span className={`text-sm font-medium ${step >= 1 ? "text-white" : "text-zinc-400"}`}>Account</span>
+            <span className={`text-base font-semibold ${step === 1 ? "text-amber-400" : "text-zinc-400"}`}>1</span>
+            <span className={`text-sm font-semibold ${step === 1 ? "text-amber-400" : step > 1 ? "text-white" : "text-zinc-400"}`}>
+              Account
+            </span>
           </div>
 
           <div className={`h-[2px] w-10 sm:w-14 ${step >= 2 ? "bg-[#f2b527]" : "bg-zinc-200"}`} />
 
           <div className="flex items-center gap-2">
-            <div
-              className={`flex h-11 w-11 items-center justify-center rounded-full text-base font-semibold ${
-                step >= 2 ? "bg-gradient-to-br from-[#ff8f5a] to-[#f6c431] text-white" : "bg-zinc-200 text-zinc-500"
-              }`}
-            >
-              2
-            </div>
-            <span className={`text-sm font-medium ${step >= 2 ? "text-white" : "text-zinc-400"}`}>Details</span>
+            <span className={`text-base font-semibold ${step === 2 ? "text-amber-400" : "text-zinc-400"}`}>2</span>
+            <span className={`text-sm font-semibold ${step === 2 ? "text-amber-400" : step > 2 ? "text-white" : "text-zinc-400"}`}>
+              Details
+            </span>
           </div>
 
           <div className={`h-[2px] w-10 sm:w-14 ${step >= 3 ? "bg-[#f2b527]" : "bg-zinc-200"}`} />
 
           <div className="flex items-center gap-2">
-            <div
-              className={`flex h-11 w-11 items-center justify-center rounded-full text-base font-semibold ${
-                step >= 3 ? "bg-gradient-to-br from-[#ff8f5a] to-[#f6c431] text-white" : "bg-zinc-200 text-zinc-500"
-              }`}
-            >
-              3
-            </div>
-            <span className={`text-sm font-medium ${step >= 3 ? "text-white" : "text-zinc-400"}`}>Verify</span>
+            <span className={`text-base font-semibold ${step === 3 ? "text-amber-400" : "text-zinc-400"}`}>3</span>
+            <span className={`text-sm font-semibold ${step === 3 ? "text-amber-400" : "text-zinc-400"}`}>
+              Verify
+            </span>
           </div>
         </div>
       </div>
@@ -354,7 +342,7 @@ export default function RegisterForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-xl bg-linear-to-r from-[#ff7a74] to-[#f5c642] px-4 py-2 font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+          className="w-full rounded-xl bg-[#f6b21f] px-4 py-2 font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-not-allowed disabled:opacity-70"
         >
           {loading ? "Please wait..." : step < 3 ? "Continue" : "Verify and Register"}
         </button>
@@ -362,7 +350,7 @@ export default function RegisterForm() {
 
       <p className="text-center text-sm text-ink-muted">
         Already have an account?{" "}
-        <Link href="/auth/login" className="font-semibold text-brand">
+        <Link href="/auth/login" className="font-semibold text-amber-400 hover:text-amber-300">
           Login
         </Link>
       </p>

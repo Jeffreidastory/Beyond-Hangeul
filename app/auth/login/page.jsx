@@ -1,4 +1,7 @@
+import AuthNavbar from "@/components/AuthNavbar";
+import Image from "next/image";
 import LoginForm from "@/components/LoginForm";
+import BHLogo from "@/app/images/BH-logo.png";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +17,8 @@ export default function LoginPage() {
           padding-left: 0 !important;
           padding-right: 0 !important;
         }
-
       `}</style>
+      <AuthNavbar page="login" />
 
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-32 right-10 h-80 w-80 rounded-full bg-[#0b4f8a]/35 blur-3xl" />
@@ -25,8 +28,11 @@ export default function LoginPage() {
 
       </div>
 
-      <div className="relative mx-auto flex min-h-[calc(100vh-73px)] w-full max-w-7xl items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md -translate-y-6 rounded-2xl border border-white/20 bg-[#0a1e35]/75 p-6 shadow-2xl backdrop-blur-sm sm:p-8">
+      <div className="relative mx-auto flex min-h-[calc(100vh-73px)] w-full max-w-7xl items-center justify-center px-4 pt-20 pb-6 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md rounded-3xl border border-white/20 bg-[#0a1e35]/80 p-5 shadow-2xl backdrop-blur-sm sm:p-7">
+          <div className="mx-auto mb-2 w-fit">
+            <Image src={BHLogo} alt="Beyond Hangeul logo" width={84} height={84} className="object-contain" />
+          </div>
           <LoginForm />
         </div>
       </div>

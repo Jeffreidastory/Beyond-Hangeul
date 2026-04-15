@@ -35,42 +35,52 @@ export default function LoginForm() {
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="pt-1 text-center">
-        <h2 className="text-4xl font-bold text-white [font-family:var(--font-headline)]">Welcome Back</h2>
-        <p className="mt-2 text-xl font-medium text-white/80">Sign in to your account</p>
+    <form onSubmit={onSubmit} className="space-y-3">
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold text-white font-headline">Welcome back</h2>
+        <p className="mt-2 text-sm text-white/70">Please enter your detail to sign in.</p>
       </div>
 
       <div>
+        <label htmlFor="login-email" className="mb-2 inline-block text-sm font-medium text-white/70">
+          E-Mail Address
+        </label>
         <input
           id="login-email"
           type="email"
+          autoComplete="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Username"
+          placeholder="Enter your email..."
           className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-base text-white placeholder:text-slate-300 outline-none ring-2 ring-transparent transition focus:border-white/30 focus:ring-white/20"
         />
       </div>
 
       <div className="relative">
+        <label htmlFor="login-password" className="mb-2 inline-block text-sm font-medium text-white/70">
+          Password
+        </label>
         <input
           id="login-password"
           type={showPassword ? "text" : "password"}
+          autoComplete="current-password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
-          className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 pr-12 text-base text-white placeholder:text-slate-300 outline-none ring-2 ring-transparent transition focus:border-white/30 focus:ring-white/20"
+          className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 pr-14 text-base text-white placeholder:text-slate-300 outline-none ring-2 ring-transparent transition focus:border-white/30 focus:ring-white/20"
         />
-        <button
-          type="button"
-          onClick={() => setShowPassword((prev) => !prev)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-200/90 transition hover:bg-white/10 hover:text-white"
-          aria-label={showPassword ? "Hide password" : "Show password"}
-        >
-          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-        </button>
+        {password ? (
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute right-3 bottom-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-slate-200/90 transition hover:bg-white/15 hover:text-white"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between text-sm">
@@ -101,7 +111,7 @@ export default function LoginForm() {
 
       <p className="pt-3 text-center text-base text-white/85">
         Don&apos;t have an account?{" "}
-        <Link href="/auth/register" className="font-semibold text-[#5fa3ff] hover:text-[#8ab9ff]">
+        <Link href="/auth/register" className="font-semibold text-amber-400 hover:text-amber-300">
           Sign Up
         </Link>
       </p>

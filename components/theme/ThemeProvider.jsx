@@ -2,7 +2,16 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-const ThemeContext = createContext(null);
+const defaultThemeContext = {
+  themeMode: "dark",
+  isLight: false,
+  setThemeMode: () => {},
+  toggleTheme: () => {},
+  fontSize: 100,
+  setFontSize: () => {},
+};
+
+const ThemeContext = createContext(defaultThemeContext);
 
 const THEME_STORAGE_KEY = "bh-theme-mode";
 const FONT_SIZE_STORAGE_KEY = "bh-font-size";
@@ -76,8 +85,5 @@ export function ThemeProvider({ children }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error("useTheme must be used within ThemeProvider.");
-  }
-  return context;
+  return context || defaultThemeContext;
 }

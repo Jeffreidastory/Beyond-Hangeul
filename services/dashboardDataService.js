@@ -48,97 +48,10 @@ if (!runtimeGlobal[DASHBOARD_BLOB_STORE_KEY]) {
 const blobStore = runtimeGlobal[DASHBOARD_BLOB_STORE_KEY];
 
 const buildSeedData = () => ({
-  modules: [
-    {
-      id: "m-free-1",
-      moduleName: "Starter Hangeul",
-      topicTitle: "Read and write Korean vowels and consonants",
-      resourceFileName: "",
-      resourceFileData: "",
-      resourceFileType: "",
-      type: MODULE_TYPE.FREE,
-      price: null,
-      status: MODULE_STATUS.ACTIVE,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "m-paid-1",
-      moduleName: "Conversational Blueprint",
-      topicTitle: "Korean speaking patterns for daily contexts",
-      resourceFileName: "",
-      resourceFileData: "",
-      resourceFileType: "",
-      type: MODULE_TYPE.PAID,
-      price: 79,
-      status: MODULE_STATUS.ACTIVE,
-      createdAt: new Date().toISOString(),
-    },
-  ],
-  pathItems: [
-    {
-      id: "path-1",
-      title: "Phase 1: Script and Sound",
-      content: "Master Hangeul recognition and pronunciation before advancing.",
-      createdAt: new Date().toISOString(),
-    },
-  ],
-  learningPaths: [
-    {
-      id: "learning-path-1",
-      title: "Korean Foundations Journey",
-      description: "Follow this sequence to build Korean fundamentals step by step.",
-      status: PATH_STATUS.ACTIVE,
-      steps: [
-        {
-          id: "step-1",
-          order: 1,
-          title: "Learn Hangul Basics",
-          description: "Start with reading and writing Korean vowels and consonants.",
-          type: PATH_STEP_TYPE.MODULE,
-          linkedItemId: "m-free-1",
-          infoContent: "",
-        },
-        {
-          id: "step-2",
-          order: 2,
-          title: "Pronunciation Practice",
-          description: "Practice pronunciation rules and mouth positioning.",
-          type: PATH_STEP_TYPE.INFO,
-          linkedItemId: "",
-          infoContent: "Spend 20 minutes daily repeating core pronunciation drills.",
-        },
-        {
-          id: "step-3",
-          order: 3,
-          title: "Worksheet Practice",
-          description: "Use structured drills to lock in recognition speed.",
-          type: PATH_STEP_TYPE.WORKSHEET,
-          linkedItemId: "ws-1",
-          infoContent: "",
-        },
-        {
-          id: "step-4",
-          order: 4,
-          title: "Vocabulary Module",
-          description: "Move to practical vocabulary usage and sentence framing.",
-          type: PATH_STEP_TYPE.MODULE,
-          linkedItemId: "m-paid-1",
-          infoContent: "",
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ],
-  worksheets: [
-    {
-      id: "ws-1",
-      title: "Hangeul Drill Sheet",
-      description: "Trace and transcribe core characters.",
-      content: "Practice vowels first, then consonant blocks, then full syllables.",
-      createdAt: new Date().toISOString(),
-    },
-  ],
+  modules: [],
+  pathItems: [],
+  learningPaths: [],
+  worksheets: [],
   resourceFiles: [],
   resourceNotes: [],
   resourceBookmarks: [],
@@ -148,6 +61,7 @@ const buildSeedData = () => ({
   payments: [],
   moduleProgress: [],
   worksheetProgress: [],
+  containers: [],
 });
 
 const parseStore = (raw) => {
@@ -158,6 +72,17 @@ const parseStore = (raw) => {
     return null;
   }
 };
+
+function isDemoSeedStore(store) {
+  const demoModuleIds = new Set(["m-free-1", "m-paid-1"]);
+  const demoPathIds = new Set(["path-1", "learning-path-1"]);
+
+  const hasDemoModule = Array.isArray(store.modules) && store.modules.some((module) => demoModuleIds.has(module.id));
+  const hasDemoPath = Array.isArray(store.pathItems) && store.pathItems.some((item) => demoPathIds.has(item.id));
+  const hasDemoLearningPath = Array.isArray(store.learningPaths) && store.learningPaths.some((path) => demoPathIds.has(path.id));
+
+  return hasDemoModule || hasDemoPath || hasDemoLearningPath;
+}
 
 const ensureBrowser = () => typeof window !== "undefined";
 
@@ -193,6 +118,9 @@ function hydrateBlobFields(store) {
     modules: (store.modules || []).map((module) => ({
       ...module,
       resourceFileData: module.resourceFileData || getModuleFileBlob(module.id),
+      containerId: module.containerId || "",
+      containerTitle: module.containerTitle || "",
+      containerSubtitle: module.containerSubtitle || "",
     })),
     payments: (store.payments || []).map((payment) => {
       const hydratedProof = payment.proofImage || payment.receiptImage || getPaymentReceiptBlob(payment.id);
@@ -217,6 +145,7 @@ function toPersistableStore(store) {
       ...payment,
       receiptImage: "",
     })),
+    containers: store.containers || [],
   };
 }
 
@@ -272,6 +201,7 @@ function getStore() {
       payments: existing.payments || [],
       moduleProgress: existing.moduleProgress || [],
       worksheetProgress: existing.worksheetProgress || [],
+      containers: existing.containers || [],
     };
 
     normalizedStore.learningPaths = (normalizedStore.learningPaths || []).map((path) => ({
@@ -281,6 +211,12 @@ function getStore() {
       createdAt: path.createdAt || new Date().toISOString(),
       updatedAt: path.updatedAt || path.createdAt || new Date().toISOString(),
     }));
+
+    if (isDemoSeedStore(normalizedStore)) {
+      const clearedStore = buildSeedData();
+      saveStore(clearedStore);
+      return hydrateBlobFields(clearedStore);
+    }
 
     if (!normalizedStore.learningPaths.length) {
       normalizedStore.learningPaths = buildSeedData().learningPaths;
@@ -441,6 +377,43 @@ export function listModules() {
   return getStore().modules;
 }
 
+export function listContainers() {
+  return getStore().containers || [];
+}
+
+export function createContainer(payload) {
+  const store = getStore();
+  const nextContainer = {
+    id: payload.id || randomId("container"),
+    title: payload.title || "Untitled Container",
+    subtitle: payload.subtitle || "",
+    createdAt: payload.createdAt || new Date().toISOString(),
+  };
+
+  store.containers = [...(store.containers || []), nextContainer];
+  saveStore(store);
+  return nextContainer;
+}
+
+export function updateContainer(containerId, patch) {
+  const store = getStore();
+  store.containers = (store.containers || []).map((container) =>
+    container.id === containerId
+      ? {
+          ...container,
+          ...patch,
+        }
+      : container
+  );
+  saveStore(store);
+}
+
+export function deleteContainer(containerId) {
+  const store = getStore();
+  store.containers = (store.containers || []).filter((container) => container.id !== containerId);
+  saveStore(store);
+}
+
 export function createModule(payload) {
   const store = getStore();
   const nextModuleId = randomId("module");
@@ -454,6 +427,9 @@ export function createModule(payload) {
     type: payload.type,
     price: payload.type === MODULE_TYPE.PAID ? Number(payload.price || 0) : null,
     status: payload.status || MODULE_STATUS.ACTIVE,
+    containerId: payload.containerId || "",
+    containerTitle: payload.containerTitle || "",
+    containerSubtitle: payload.containerSubtitle || "",
     createdAt: new Date().toISOString(),
   };
 
@@ -552,8 +528,8 @@ export async function listLearningPathsShared() {
       createdAt: row.created_at || new Date().toISOString(),
       updatedAt: row.updated_at || row.created_at || new Date().toISOString(),
     }));
-  } catch {
-    return listLearningPaths();
+  } catch (error) {
+    throw normalizeError(error);
   }
 }
 
@@ -1285,6 +1261,9 @@ function mapModuleRowToModel(row) {
     price: row.price == null ? null : Number(row.price),
     status: row.status || MODULE_STATUS.ACTIVE,
     createdAt: row.created_at,
+    containerId: row.container_id || "",
+    containerTitle: row.container_title || "",
+    containerSubtitle: row.container_subtitle || "",
   };
 }
 
@@ -1355,18 +1334,89 @@ function mapModuleProgressRow(row) {
   };
 }
 
+function normalizeError(error) {
+  if (error instanceof Error) return error;
+  if (typeof error === "string") return new Error(error);
+  if (error && typeof error === "object") {
+    if (typeof error.message === "string" && error.message.trim()) {
+      return new Error(error.message);
+    }
+    try {
+      return new Error(JSON.stringify(error));
+    } catch {
+      return new Error(String(error));
+    }
+  }
+  return new Error(String(error));
+}
+
+function mergeLocalModuleContainerMetadata(remoteModules) {
+  const localModules = listModules();
+  const localMap = new Map(localModules.map((module) => [module.id, module]));
+  return remoteModules.map((module) => {
+    const local = localMap.get(module.id);
+    if (!local) return module;
+    return {
+      ...module,
+      containerId: local.containerId || module.containerId || "",
+      containerTitle: local.containerTitle || module.containerTitle || "",
+      containerSubtitle: local.containerSubtitle || module.containerSubtitle || "",
+    };
+  });
+}
+
+async function fetchSharedModulesViaApi() {
+  try {
+    const response = await fetch("/api/shared/modules");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const apiError = payload?.error;
+      const errorMessage = typeof apiError === "string" ? apiError : apiError?.message || `Shared modules API failed with status ${response.status}`;
+      throw new Error(errorMessage);
+    }
+    const payload = await response.json();
+    return (payload.modules || []).map(mapModuleRowToModel);
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
 export async function listModulesShared() {
   try {
     const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
       .from("learning_modules")
-      .select("id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at")
+      .select(
+        "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
+      )
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return (data || []).map(mapModuleRowToModel);
-  } catch {
-    return listModules();
+    const remoteModules = (data || []).map(mapModuleRowToModel);
+    return mergeLocalModuleContainerMetadata(remoteModules);
+  } catch (error) {
+    console.warn("listModulesShared failed, retrying with minimal module fields:", error);
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const { data, error: minimalError } = await supabase
+        .from("learning_modules")
+        .select(
+          "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at"
+        )
+        .order("created_at", { ascending: false });
+
+      if (!minimalError) {
+        const remoteModules = (data || []).map(mapModuleRowToModel);
+        return mergeLocalModuleContainerMetadata(remoteModules);
+      }
+
+      console.warn("Minimal module field query also failed, using server API fallback:", minimalError);
+    } catch (fallbackError) {
+      console.warn("Minimal module field retry threw error:", fallbackError);
+    }
+
+    const remoteModules = await fetchSharedModulesViaApi();
+    return mergeLocalModuleContainerMetadata(remoteModules);
   }
 }
 
@@ -1380,8 +1430,8 @@ export async function listWorksheetsShared() {
 
     if (error) throw error;
     return (data || []).map(mapWorksheetRowToModel);
-  } catch {
-    return listWorksheets();
+  } catch (error) {
+    throw normalizeError(error);
   }
 }
 
@@ -1513,164 +1563,134 @@ export async function migrateLocalWorksheetsToShared() {
   };
 }
 
-export async function migrateLocalDashboardContentToShared() {
+export async function createModuleShared(payload) {
   const supabase = getSupabaseBrowserClient();
-  const store = getStore();
-  const localModules = Array.isArray(store.modules) ? store.modules : [];
-  const localWorksheets = listWorksheets();
-  const localPaths = Array.isArray(store.learningPaths) ? store.learningPaths : [];
+  const { data, error } = await supabase
+    .from("learning_modules")
+    .insert({
+      module_name: payload.moduleName,
+      topic_title: payload.topicTitle,
+      resource_file_name: payload.resourceFileName || "",
+      resource_file_data: payload.resourceFileData || "",
+      resource_file_type: payload.resourceFileType || "",
+      type: payload.type || MODULE_TYPE.FREE,
+      price: payload.type === MODULE_TYPE.PAID ? Number(payload.price || 0) : null,
+      status: payload.status || MODULE_STATUS.ACTIVE,
+      container_id: payload.containerId || null,
+      container_title: payload.containerTitle || "",
+      container_subtitle: payload.containerSubtitle || "",
+    })
+    .select(
+      "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
+    )
+    .single();
 
-  const summary = {
-    modulesMigrated: 0,
-    worksheetsMigrated: 0,
-    pathsMigrated: 0,
-  };
-
-  const [{ data: existingModules }, { data: existingWorksheets }, { data: existingPaths }] = await Promise.all([
-    supabase.from("learning_modules").select("id").limit(1),
-    supabase.from("learning_worksheets").select("id").limit(1),
-    supabase.from("learning_paths").select("id").limit(1),
-  ]);
-
-  if ((!existingModules || existingModules.length === 0) && localModules.length) {
-    const rows = localModules.map((module) => ({
-      module_name: String(module.moduleName || "Untitled Module"),
-      topic_title: String(module.topicTitle || ""),
-      resource_file_name: String(module.resourceFileName || ""),
-      resource_file_data: String(module.resourceFileData || ""),
-      resource_file_type: String(module.resourceFileType || ""),
-      type: module.type === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-      price: module.type === MODULE_TYPE.PAID ? Number(module.price || 0) : null,
-      status: module.status || MODULE_STATUS.ACTIVE,
-      created_at: module.createdAt || new Date().toISOString(),
-    }));
-
-    const { error } = await supabase.from("learning_modules").insert(rows);
-    if (!error) {
-      summary.modulesMigrated = rows.length;
-    }
-  }
-
-  if ((!existingWorksheets || existingWorksheets.length === 0) && localWorksheets.length) {
-    const rows = localWorksheets.map((worksheet) => ({
-      title: String(worksheet.title || "Untitled Worksheet"),
-      access_type: worksheet.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-      resource_file_name: String(worksheet.resourceFileName || ""),
-      resource_file_data: String(worksheet.resourceFileData || ""),
-      resource_file_type: String(worksheet.resourceFileType || ""),
-      entries: normalizeWorksheetEntries(worksheet.entries || []),
-      description: String(worksheet.description || ""),
-      created_at: worksheet.createdAt || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
-
-    const { error } = await supabase.from("learning_worksheets").insert(rows);
-    if (!error) {
-      summary.worksheetsMigrated = rows.length;
-    }
-  }
-
-  if ((!existingPaths || existingPaths.length === 0) && localPaths.length) {
-    for (const path of localPaths) {
-      const normalizedSteps = normalizePathSteps(path.steps || []).map((step, index) => ({ ...step, order: index + 1 }));
-      const nowIso = new Date().toISOString();
-
-      const { data: createdPath, error: pathError } = await supabase
-        .from("learning_paths")
-        .insert({
-          title: String(path.title || "Untitled Path"),
-          description: String(path.description || ""),
-          status: path.status || PATH_STATUS.DRAFT,
-          created_at: path.createdAt || nowIso,
-          updated_at: path.updatedAt || nowIso,
-        })
-        .select("id")
-        .single();
-
-      if (pathError || !createdPath?.id) continue;
-
-      if (normalizedSteps.length) {
-        const stepRows = normalizedSteps.map((step, index) => ({
-          path_id: createdPath.id,
-          step_order: index + 1,
-          title: step.title || "",
-          description: step.description || "",
-          type: step.type || PATH_STEP_TYPE.INFO,
-          enabled_types: Array.isArray(step.enabledTypes) && step.enabledTypes.length
-            ? step.enabledTypes
-            : [step.type || PATH_STEP_TYPE.INFO],
-          linked_item_id: step.linkedItemId || "",
-          linked_item_ids: Array.isArray(step.linkedItemIds) ? step.linkedItemIds : [],
-          linked_module_ids: Array.isArray(step.linkedModuleIds) ? step.linkedModuleIds : [],
-          linked_worksheet_ids: Array.isArray(step.linkedWorksheetIds) ? step.linkedWorksheetIds : [],
-          info_content: step.infoContent || "",
-        }));
-
-        const { error: stepError } = await supabase.from("learning_path_steps").insert(stepRows);
-        if (stepError) continue;
-      }
-
-      summary.pathsMigrated += 1;
-    }
-  }
-
-  return summary;
+  if (error) throw error;
+  return mapModuleRowToModel(data);
 }
 
-export async function createModuleShared(payload) {
+async function fetchSharedContainersViaApi() {
   try {
-    const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase
-      .from("learning_modules")
-      .insert({
-        module_name: payload.moduleName,
-        topic_title: payload.topicTitle,
-        resource_file_name: payload.resourceFileName || "",
-        resource_file_data: payload.resourceFileData || "",
-        resource_file_type: payload.resourceFileType || "",
-        type: payload.type || MODULE_TYPE.FREE,
-        price: payload.type === MODULE_TYPE.PAID ? Number(payload.price || 0) : null,
-        status: payload.status || MODULE_STATUS.ACTIVE,
-      })
-      .select("id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at")
-      .single();
+    const response = await fetch("/api/shared/containers", {
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
 
-    if (error) throw error;
-    return mapModuleRowToModel(data);
-  } catch {
-    return createModule(payload);
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      console.warn("fetchSharedContainersViaApi failed", response.status, response.statusText, errorText);
+      return [];
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    return (payload.containers || []).map((row) => ({
+      id: row.id,
+      title: row.title || "Untitled Container",
+      subtitle: row.subtitle || "",
+      createdAt: row.created_at,
+    }));
+  } catch (error) {
+    console.warn("fetchSharedContainersViaApi exception:", error);
+    return [];
   }
+}
+
+export async function listContainersShared() {
+  return await fetchSharedContainersViaApi();
+}
+
+async function callAdminContainerApi(method, body) {
+  const response = await fetch("/api/admin/containers", {
+    method,
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.warn(`callAdminContainerApi ${method} failed`, response.status, response.statusText, payload);
+    throw normalizeError(payload.error || payload || `Container API ${method} failed`);
+  }
+  return payload;
+}
+
+export async function createContainerShared(payload) {
+  const response = await callAdminContainerApi("POST", {
+    title: payload.title || "Untitled Container",
+    subtitle: payload.subtitle || "",
+    createdAt: payload.createdAt || new Date().toISOString(),
+  });
+
+  const data = response.container;
+  return {
+    id: data.id,
+    title: data.title,
+    subtitle: data.subtitle || "",
+    createdAt: data.created_at,
+  };
+}
+
+export async function updateContainerShared(containerId, patch) {
+  await callAdminContainerApi("PATCH", {
+    id: containerId,
+    title: patch.title,
+    subtitle: patch.subtitle,
+  });
+}
+
+export async function deleteContainerShared(containerId) {
+  await callAdminContainerApi("DELETE", { id: containerId });
 }
 
 export async function updateModuleShared(moduleId, patch) {
-  try {
-    const supabase = getSupabaseBrowserClient();
-    const nextPatch = {};
+  const supabase = getSupabaseBrowserClient();
+  const nextPatch = {};
 
-    if (patch.moduleName !== undefined) nextPatch.module_name = patch.moduleName;
-    if (patch.topicTitle !== undefined) nextPatch.topic_title = patch.topicTitle;
-    if (patch.resourceFileName !== undefined) nextPatch.resource_file_name = patch.resourceFileName;
-    if (patch.resourceFileData !== undefined) nextPatch.resource_file_data = patch.resourceFileData;
-    if (patch.resourceFileType !== undefined) nextPatch.resource_file_type = patch.resourceFileType;
-    if (patch.type !== undefined) nextPatch.type = patch.type;
-    if (patch.price !== undefined) nextPatch.price = patch.price == null ? null : Number(patch.price);
-    if (patch.status !== undefined) nextPatch.status = patch.status;
+  if (patch.moduleName !== undefined) nextPatch.module_name = patch.moduleName;
+  if (patch.topicTitle !== undefined) nextPatch.topic_title = patch.topicTitle;
+  if (patch.resourceFileName !== undefined) nextPatch.resource_file_name = patch.resourceFileName;
+  if (patch.resourceFileData !== undefined) nextPatch.resource_file_data = patch.resourceFileData;
+  if (patch.resourceFileType !== undefined) nextPatch.resource_file_type = patch.resourceFileType;
+  if (patch.type !== undefined) nextPatch.type = patch.type;
+  if (patch.price !== undefined) nextPatch.price = patch.price == null ? null : Number(patch.price);
+  if (patch.status !== undefined) nextPatch.status = patch.status;
+  if (patch.containerId !== undefined) nextPatch.container_id = patch.containerId || null;
+  if (patch.containerTitle !== undefined) nextPatch.container_title = patch.containerTitle || "";
+  if (patch.containerSubtitle !== undefined) nextPatch.container_subtitle = patch.containerSubtitle || "";
 
-    const { error } = await supabase.from("learning_modules").update(nextPatch).eq("id", moduleId);
-    if (error) throw error;
-  } catch {
-    updateModule(moduleId, patch);
-  }
+  const { error } = await supabase.from("learning_modules").update(nextPatch).eq("id", moduleId);
+  if (error) throw normalizeError(error);
 }
 
 export async function deleteModuleShared(moduleId) {
-  try {
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase.from("learning_modules").delete().eq("id", moduleId);
-    if (error) throw error;
-  } catch {
-    deleteModule(moduleId);
-  }
+  const supabase = getSupabaseBrowserClient();
+  const { error } = await supabase.from("learning_modules").delete().eq("id", moduleId);
+  if (error) throw error;
 }
 
 export async function listPaymentsShared() {
@@ -1681,10 +1701,14 @@ export async function listPaymentsShared() {
       .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
       .order("submitted_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.warn("Payment records fetch failed, returning empty payment list:", error);
+      return [];
+    }
     return (data || []).map(mapPaymentRowToModel);
-  } catch {
-    return listPayments();
+  } catch (error) {
+    console.warn("Payment records fetch exception, returning empty payment list:", error);
+    return [];
   }
 }
 
@@ -1818,16 +1842,25 @@ export async function listUsersWithStatusShared(initialUsers = []) {
         .select("id, user_id, module_id, status, granted_at"),
       supabase
         .from("learning_modules")
-        .select("id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at"),
+        .select(
+          "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
+        ),
     ]);
 
-    if (paymentsResult.error) throw paymentsResult.error;
-    if (accessResult.error) throw accessResult.error;
-    if (modulesResult.error) throw modulesResult.error;
+    const payments = paymentsResult.error ? [] : (paymentsResult.data || []).map(mapPaymentRowToModel);
+    if (paymentsResult.error) {
+      console.warn("Ignoring payment fetch failure in shared user status:", paymentsResult.error);
+    }
 
-    const payments = (paymentsResult.data || []).map(mapPaymentRowToModel);
-    const accessRows = (accessResult.data || []).map(mapAccessRow);
-    const modules = (modulesResult.data || []).map(mapModuleRowToModel);
+    const accessRows = accessResult.error ? [] : (accessResult.data || []).map(mapAccessRow);
+    if (accessResult.error) {
+      console.warn("Ignoring module access fetch failure in shared user status:", accessResult.error);
+    }
+
+    const modules = modulesResult.error ? [] : (modulesResult.data || []).map(mapModuleRowToModel);
+    if (modulesResult.error) {
+      console.warn("Ignoring module fetch failure in shared user status:", modulesResult.error);
+    }
 
     return users.map((user) => {
       const unlockedModuleIds = new Set(
@@ -1862,18 +1895,20 @@ export async function listUsersWithStatusShared(initialUsers = []) {
         latestPayment: paymentRecords[0] || null,
       };
     });
-  } catch {
-    return listUsersWithStatus(initialUsers);
+  } catch (error) {
+    throw normalizeError(error);
   }
 }
 
 export async function getUserLearningDataShared(userId) {
   try {
     const supabase = getSupabaseBrowserClient();
-    const [modulesResult, accessResult, paymentsResult, sharedPaths, sharedWorksheets] = await Promise.all([
+    const [modulesResult, accessResult, paymentsResult, sharedPaths, sharedWorksheets, containersResult] = await Promise.all([
       supabase
         .from("learning_modules")
-        .select("id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at")
+        .select(
+          "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
+        )
         .order("created_at", { ascending: true }),
       supabase
         .from("user_module_access")
@@ -1886,28 +1921,44 @@ export async function getUserLearningDataShared(userId) {
         .order("submitted_at", { ascending: false }),
       listLearningPathsShared(),
       listWorksheetsShared(),
+      listContainersShared(),
     ]);
 
     if (modulesResult.error) throw modulesResult.error;
     if (accessResult.error) throw accessResult.error;
-    if (paymentsResult.error) throw paymentsResult.error;
 
     const modules = (modulesResult.data || []).map(mapModuleRowToModel);
     const accessRows = (accessResult.data || []).map(mapAccessRow);
-    const payments = (paymentsResult.data || []).map(mapPaymentRowToModel);
+    const payments = paymentsResult.error ? [] : (paymentsResult.data || []).map(mapPaymentRowToModel);
+    if (paymentsResult.error) {
+      console.warn("Ignoring payment fetch failure in user learning data:", paymentsResult.error);
+    }
+
+    const containers = (containersResult || []).map((row) => ({
+      id: row.id,
+      title: row.title || "Untitled Container",
+      subtitle: row.subtitle || "",
+      createdAt: row.created_at,
+    }));
     const activeLearningPath = sharedPaths.find((path) => path.status === PATH_STATUS.ACTIVE) || sharedPaths[0] || null;
     const pathItems = buildPathItemsFromPath(activeLearningPath);
     let worksheetScores = {};
     let moduleProgress = {};
 
     try {
-      const { data, error } = await supabase
-        .from("worksheet_progress")
-        .select("user_id, worksheet_id, quiz_percent, writing_percent, quiz_complete, created_at, updated_at")
-        .eq("user_id", userId);
+      const [worksheetResult, moduleResult] = await Promise.all([
+        supabase
+          .from("worksheet_progress")
+          .select("user_id, worksheet_id, quiz_percent, writing_percent, quiz_complete, created_at, updated_at")
+          .eq("user_id", userId),
+        supabase
+          .from("module_progress")
+          .select("user_id, module_id, progress_percent, completed, created_at, updated_at")
+          .eq("user_id", userId),
+      ]);
 
-      if (!error) {
-        worksheetScores = (data || [])
+      if (!worksheetResult.error) {
+        worksheetScores = (worksheetResult.data || [])
           .map(mapWorksheetProgressRow)
           .reduce((acc, row) => {
             acc[row.worksheetId] = {
@@ -1919,18 +1970,9 @@ export async function getUserLearningDataShared(userId) {
             return acc;
           }, {});
       }
-    } catch {
-      worksheetScores = {};
-    }
 
-    try {
-      const { data, error } = await supabase
-        .from("module_progress")
-        .select("user_id, module_id, progress_percent, completed, created_at, updated_at")
-        .eq("user_id", userId);
-
-      if (!error) {
-        moduleProgress = (data || [])
+      if (!moduleResult.error) {
+        moduleProgress = (moduleResult.data || [])
           .map(mapModuleProgressRow)
           .reduce((acc, row) => {
             acc[row.moduleId] = {
@@ -1942,6 +1984,7 @@ export async function getUserLearningDataShared(userId) {
           }, {});
       }
     } catch {
+      worksheetScores = {};
       moduleProgress = {};
     }
 
@@ -1984,9 +2027,10 @@ export async function getUserLearningDataShared(userId) {
       payments,
       moduleProgress,
       worksheetScores,
+      containers,
     };
-  } catch {
-    return getUserLearningData(userId);
+  } catch (error) {
+    throw normalizeError(error);
   }
 }
 
