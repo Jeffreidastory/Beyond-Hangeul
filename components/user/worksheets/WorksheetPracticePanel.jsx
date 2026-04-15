@@ -316,19 +316,24 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
       ? "ring-2 ring-amber-400 bg-amber-500/15"
       : "";
 
-  const writingStatus = writingResults[activeWritingIndex];
-  const isWritingCorrect = writingStatus === true;
-  const isWritingIncorrect = writingStatus === false;
   const currentLetter = activeWritingItem?.korean || "";
   const currentRomanization = activeWritingItem?.romanization || "";
+  const currentAnswerSequence = writingSequences[activeWritingIndex] || "";
+  const currentAnswerText = composeFromSequence(currentAnswerSequence).trim();
+  const expectedAnswer = String(activeWritingItem?.korean || "").trim();
+  const currentAnswerIsCorrect = isAnswerMatch(currentAnswerText, expectedAnswer);
+  const currentAnswerIsFilled = currentAnswerText.length > 0;
+  const currentAnswerIsIncorrect = currentAnswerIsFilled && !currentAnswerIsCorrect;
+  const isLastWritingStep = activeWritingIndex === entries.length - 1;
+  const canContinue = currentAnswerIsCorrect;
   const displayPlaceholder = currentLetter
     ? showRomanization && currentRomanization
       ? `Type: ${currentLetter} (${currentRomanization})`
       : `Type: ${currentLetter}`
     : "Type your answer";
-  const inputBorderClass = isWritingCorrect
+  const inputBorderClass = currentAnswerIsCorrect
     ? "border-emerald-400 focus:border-emerald-400"
-    : isWritingIncorrect
+    : currentAnswerIsIncorrect
       ? "border-rose-500 focus:border-rose-400"
       : "border-white/15 focus:border-amber-400";
   const currentSound = activeWritingItem?.number || "";
@@ -337,12 +342,45 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
   const showHint = () => {
     if (!currentLetter) return;
     setWritingSequences((prev) => ({ ...prev, [activeWritingIndex]: toSequence(currentLetter) }));
-    setWritingResults((prev) => ({ ...prev, [activeWritingIndex]: undefined }));
   };
 
   const repeatLetter = () => {
     setWritingSequences((prev) => ({ ...prev, [activeWritingIndex]: "" }));
-    setWritingResults((prev) => ({ ...prev, [activeWritingIndex]: undefined }));
+    setWritingResults((prev) => {
+      const next = { ...prev };
+      delete next[activeWritingIndex];
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!activeWritingItem) return;
+    setWritingResults((prev) => {
+      if (currentAnswerIsCorrect) {
+        if (prev[activeWritingIndex] === true) return prev;
+        return { ...prev, [activeWritingIndex]: true };
+      }
+
+      if (prev[activeWritingIndex] === true) {
+        const next = { ...prev };
+        delete next[activeWritingIndex];
+        return next;
+      }
+
+      return prev;
+    });
+  }, [activeWritingIndex, currentAnswerIsCorrect, activeWritingItem]);
+
+  const handleContinue = () => {
+    if (!currentAnswerIsCorrect) return;
+    if (isLastWritingStep) {
+      setSaveStatus("Writing practice complete!");
+      return;
+    }
+
+    const nextIndex = Math.min(entries.length - 1, activeWritingIndex + 1);
+    setActiveWritingIndex(nextIndex);
+    setWritingSequences((prev) => ({ ...prev, [nextIndex]: prev[nextIndex] || "" }));
   };
 
   if (!worksheet || !entries.length) {
@@ -370,15 +408,34 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
           </div>
         </div>
 
-        <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-[#0f1d32] px-4 py-2 text-sm text-slate-200">
-          <span className="font-medium">Show Romanization</span>
-          <button
-            type="button"
-            onClick={() => setShowRomanization((prev) => !prev)}
-            className={`rounded-full px-3 py-1 font-semibold transition ${showRomanization ? "bg-amber-400 text-[#0b1728]" : "bg-white/10 text-slate-200"}`}
-          >
-            {showRomanization ? "ON" : "OFF"}
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="inline-flex overflow-hidden rounded-full border border-white/10 bg-[#0f1d32] p-1">
+            <button
+              type="button"
+              onClick={() => setMode("writing")}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "writing" ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
+            >
+              Writing
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("quiz")}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "quiz" ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
+            >
+              Quiz
+            </button>
+          </div>
+
+          <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-[#0f1d32] px-4 py-2 text-sm text-slate-200">
+            <span className="font-medium">Show Romanization</span>
+            <button
+              type="button"
+              onClick={() => setShowRomanization((prev) => !prev)}
+              className={`rounded-full px-3 py-1 font-semibold transition ${showRomanization ? "bg-amber-400 text-[#0b1728]" : "bg-white/10 text-slate-200"}`}
+            >
+              {showRomanization ? "ON" : "OFF"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -454,9 +511,9 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
                 </div>
 
                 <div className="mt-4 min-h-7 text-sm font-semibold">
-                  {isWritingCorrect ? (
+                  {currentAnswerIsCorrect ? (
                     <span className="text-emerald-400">✅ Great job! Ready for the next letter.</span>
-                  ) : isWritingIncorrect ? (
+                  ) : currentAnswerIsIncorrect ? (
                     <span className="text-rose-400">❌ Not quite — try again or use the hint.</span>
                   ) : (
                     <span className="text-slate-400">Type the character shown above in Korean.</span>
@@ -534,15 +591,15 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
               <div className="flex flex-col items-center gap-3 rounded-4xl border border-white/10 bg-[#0f172c] p-5">
                 <button
                   type="button"
-                  onClick={() => setActiveWritingIndex((prev) => Math.min(entries.length - 1, prev + 1))}
-                  disabled={!isWritingCorrect}
+                  onClick={handleContinue}
+                  disabled={!canContinue}
                   className={`inline-flex items-center justify-center rounded-full px-8 py-4 text-sm font-semibold uppercase tracking-[0.15em] transition ${
-                    isWritingCorrect
+                    canContinue
                       ? "bg-amber-400 text-[#0b1728] shadow-lg shadow-amber-400/25 hover:bg-amber-300"
                       : "cursor-not-allowed bg-white/10 text-slate-500"
                   }`}
                 >
-                  Continue
+                  {isLastWritingStep && currentAnswerIsCorrect ? "Finish" : "Continue"}
                 </button>
 
                 <div className="text-xs text-slate-500">You can only continue after a correct answer.</div>
