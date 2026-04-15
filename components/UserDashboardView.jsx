@@ -101,6 +101,8 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
     }
   }, []);
   const { isLight } = useTheme();
+  const isWorksheetsTab = activeTab === "worksheets";
+  const collapsedWorksheetSidebar = isWorksheetsTab && !sidebarOpen;
   const [learningData, setLearningData] = useState(
     initialLearningData || {
       modules: [],
@@ -1393,11 +1395,13 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
         </div>
       </header>
 
-      <div className="grid w-full grid-cols-1 gap-6 py-6 pl-0 pr-4 sm:pr-6 lg:grid-cols-[260px_1fr_320px] lg:pr-8">
+      <div className={`grid w-full grid-cols-1 gap-6 py-6 pl-0 pr-4 sm:pr-6 lg:pr-8 ${isWorksheetsTab ? "lg:grid-cols-[auto_1fr_320px]" : "lg:grid-cols-[260px_1fr_320px]"}`}>
         <aside
-          className={`${
+          className={`group ${
             sidebarOpen ? "translate-x-0 opacity-100" : "-translate-x-full opacity-0 lg:translate-x-0 lg:opacity-100"
-          } fixed left-0 z-30 w-65 border-r p-4 transition ${navHeightClass} ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0b1728]"} lg:sticky lg:self-start lg:rounded-r-2xl lg:border ${isLight ? "lg:border-slate-200 lg:bg-white" : "lg:border-white/10 lg:bg-[#0f1d32]"} lg:top-22.25 lg:h-[calc(100vh-7rem)]`}
+          } fixed left-0 z-30 border-r p-4 transition-all duration-300 ${navHeightClass} ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0b1728]"} ${
+            collapsedWorksheetSidebar ? "lg:w-20 lg:hover:w-65" : "lg:w-65"
+          } lg:sticky lg:self-start lg:top-22.25 lg:h-[calc(100vh-7rem)] lg:rounded-r-2xl lg:border ${isLight ? "lg:border-slate-200 lg:bg-white" : "lg:border-white/10 lg:bg-[#0f1d32]"}`}
         >
           <nav className="space-y-2">
             {menuItems.map((item) => {
@@ -1417,7 +1421,15 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                 <div key={item.key} className="relative">
                   <button type="button" onClick={() => setTab(item.key)} className={navItemClass}>
                     <Icon size={16} />
-                    {item.label}
+                    <span
+                      className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${
+                        collapsedWorksheetSidebar
+                          ? "max-w-0 opacity-0 lg:max-w-40 lg:group-hover:max-w-full lg:group-hover:opacity-100"
+                          : "max-w-full opacity-100"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
                   </button>
                 </div>
               );

@@ -392,7 +392,7 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
   }
 
   return (
-    <section className={`rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
+    <section className={`mx-auto max-w-5xl rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div>
           <button
@@ -440,18 +440,18 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
       </div>
 
       {mode === "writing" ? (
-        <div className="space-y-4">
-          <div className={`rounded-3xl border p-4 shadow-sm ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-5 max-w-4xl mx-auto">
+          <div className={`rounded-3xl border p-5 shadow-sm ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Step {activeWritingIndex + 1} of {entries.length}</p>
-                <p className="mt-2 text-lg font-semibold text-white">Score: {writingCompletedCount} / {entries.length}</p>
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Step {activeWritingIndex + 1} of {entries.length}</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{writingCompletedCount}/{entries.length} correct</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="hidden items-center gap-2 rounded-full bg-[#0f172c] px-3 py-2 text-xs text-slate-300 sm:flex">
                 {entries.map((_, index) => (
                   <span
                     key={index}
-                    className={`h-2.5 w-2.5 rounded-full transition ${index <= activeWritingIndex ? "bg-amber-400" : "bg-white/15"}`}
+                    className={`h-2.5 w-2.5 rounded-full ${index <= activeWritingIndex ? "bg-amber-400" : "bg-white/15"}`}
                   />
                 ))}
               </div>
@@ -464,147 +464,145 @@ export default function WorksheetPracticePanel({ worksheet, isLight, onScoreChan
             </div>
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
-            <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-6">
-              <div className="text-sm uppercase tracking-[0.3em] text-slate-400">Practice Focus</div>
-              <div className="mt-5 rounded-[1.75rem] bg-[#112039] px-6 py-8 text-center shadow-[0_20px_60px_rgba(15,29,50,0.5)]">
-                <div className="text-7xl font-black tracking-tight text-amber-300">{currentLetter || "ㄱ"}</div>
-                {showRomanization && currentRomanization ? (
-                  <div className="mt-3 text-base text-slate-300">{currentRomanization}</div>
-                ) : null}
-              </div>
-              <div className="mt-6 space-y-4">
-                <div className="rounded-3xl border border-white/10 bg-[#0b1629] p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Hint</p>
-                  <p className="mt-3 text-sm text-slate-200">Type the shown Hangul character using the keyboard below. Correct answers unlock the next step.</p>
-                </div>
-                <div className="rounded-3xl border border-white/10 bg-[#0b1629] p-4">
-                  <div className="flex items-center justify-between gap-4 text-sm text-slate-200">
-                    <span>Current sound</span>
-                    <span className="font-semibold text-amber-300">{currentSound || "—"}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-8 text-center">
+            <div className="text-[5rem] font-black leading-none text-amber-300 sm:text-[7rem]">{currentLetter || "ㄱ"}</div>
+            {showRomanization && currentRomanization ? (
+              <p className="mt-3 text-lg text-slate-300">{currentRomanization}</p>
+            ) : null}
+          </div>
 
-            <div className="space-y-4">
-              <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Step {activeWritingIndex + 1} / {entries.length}</p>
-                    <p className="mt-2 text-xl font-semibold text-white">Write the letter</p>
-                  </div>
-                </div>
+          <div className="rounded-3xl border border-white/10 bg-[#0b1629] p-5">
+            <p className="text-sm text-slate-300">Type this letter:</p>
+            {showRomanization && currentRomanization ? (
+              <p className="mt-2 text-sm text-slate-200">Romanization: {currentRomanization}</p>
+            ) : null}
+            <p className="mt-2 text-sm text-slate-300">Sound: {currentSound || "—"}</p>
+          </div>
 
-                <div className="mt-5">
-                  <input
-                    autoFocus
-                    value={composeFromSequence(writingSequences[activeWritingIndex] || "")}
-                    onChange={(event) => {
-                      const nextSeq = toSequence(event.target.value);
-                      setWritingSequences((prev) => ({ ...prev, [activeWritingIndex]: nextSeq }));
-                      setWritingResults((prev) => ({ ...prev, [activeWritingIndex]: undefined }));
-                    }}
-                    placeholder={displayPlaceholder}
-                    className={`w-full rounded-3xl border px-5 py-4 text-2xl font-semibold text-white outline-none transition ${inputBorderClass}`}
-                  />
-                </div>
-
-                <div className="mt-4 min-h-7 text-sm font-semibold">
+          <div className="rounded-3xl border border-white/10 bg-[#0f172c] p-5">
+            <div className="relative">
+              <input
+                autoFocus
+                value={composeFromSequence(writingSequences[activeWritingIndex] || "")}
+                onChange={(event) => {
+                  const nextSeq = toSequence(event.target.value);
+                  setWritingSequences((prev) => ({ ...prev, [activeWritingIndex]: nextSeq }));
+                  setWritingResults((prev) => ({ ...prev, [activeWritingIndex]: undefined }));
+                }}
+                placeholder={displayPlaceholder}
+                className={`w-full rounded-3xl border px-5 py-4 text-2xl font-semibold text-white outline-none transition ${inputBorderClass}`}
+              />
+              {(currentAnswerIsCorrect || currentAnswerIsIncorrect) && (
+                <div className="pointer-events-none absolute right-4 top-1/2 flex -translate-y-1/2 items-center">
                   {currentAnswerIsCorrect ? (
-                    <span className="text-emerald-400">✅ Great job! Ready for the next letter.</span>
-                  ) : currentAnswerIsIncorrect ? (
-                    <span className="text-rose-400">❌ Not quite — try again or use the hint.</span>
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    </span>
                   ) : (
-                    <span className="text-slate-400">Type the character shown above in Korean.</span>
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/15 text-rose-300">
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 6 6 18" />
+                        <path d="m6 6 12 12" />
+                      </svg>
+                    </span>
                   )}
                 </div>
+              )}
+            </div>
+          </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={showHint}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#0b1629] px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
-                  >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M9 18h6" />
-                      <path d="M12 2a6 6 0 0 0-4 10.9V14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1.1A6 6 0 0 0 12 2z" />
-                    </svg>
-                    Show Hint
-                  </button>
-                  <button
-                    type="button"
-                    onClick={repeatLetter}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#0b1629] px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
-                  >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M4 4v6h6" />
-                      <path d="M20 20v-6h-6" />
-                      <path d="M5 12a7 7 0 0 1 14 0 7 7 0 0 1-14 0" />
-                    </svg>
-                    Clear & Try Again
-                  </button>
-                </div>
-              </div>
+          <div className="rounded-3xl border border-white/10 bg-[#0b1629] p-5">
+            <p className={`text-sm ${currentAnswerIsCorrect ? "text-emerald-300" : currentAnswerIsIncorrect ? "text-rose-300" : "text-slate-400"}`}>
+              {currentAnswerIsCorrect
+                ? "✅ Correct — continue when ready."
+                : currentAnswerIsIncorrect
+                  ? "❌ Not quite, try again or use the hint."
+                  : "Enter the correct Hangul character above."}
+            </p>
+          </div>
 
-              <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-4">
-                <div className="mb-3 text-xs uppercase tracking-[0.3em] text-slate-400">Keyboard guide</div>
-                <div className="space-y-2">
-                  {KEYBOARD_ROWS.map((row, rowIndex) => (
-                    <div
-                      key={rowIndex}
-                      className={`grid gap-2 ${
-                        rowIndex === 0
-                          ? "grid-cols-10"
-                          : rowIndex === 1
-                            ? "ml-3 grid-cols-9 sm:ml-4"
-                            : "ml-8 grid-cols-7 sm:ml-10"
-                      }`}
-                    >
-                      {row.map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => onPressKey(key)}
-                          className={`${keyboardButtonClass} ${highlightedKeyClass(key)}`}
-                        >
-                          {shiftEnabled && SHIFT_MAP[key] ? SHIFT_MAP[key] : key}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={showHint}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#0b1629] px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 18h6" />
+                <path d="M12 2a6 6 0 0 0-4 10.9V14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1.1A6 6 0 0 0 12 2z" />
+              </svg>
+              Show Hint
+            </button>
+            <button
+              type="button"
+              onClick={repeatLetter}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-[#0b1629] px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/5"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 4v6h6" />
+                <path d="M20 20v-6h-6" />
+                <path d="M5 12a7 7 0 0 1 14 0 7 7 0 0 1-14 0" />
+              </svg>
+              Repeat Letter
+            </button>
+          </div>
 
-                <div className="mt-3 grid grid-cols-4 gap-2">
-                  <button type="button" onClick={() => setShiftEnabled((prev) => !prev)} className={`${keyboardButtonClass} ${shiftEnabled ? "ring-2 ring-amber-400" : ""}`}>
-                    Shift
-                  </button>
-                  <button type="button" onClick={() => keyboardInput("SPACE")} className={`${keyboardButtonClass} col-span-2`}>
-                    Space
-                  </button>
-                  <button type="button" onClick={() => keyboardInput("BACKSPACE")} className={keyboardButtonClass}>
-                    Backspace
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-col items-center gap-3 rounded-4xl border border-white/10 bg-[#0f172c] p-5">
-                <button
-                  type="button"
-                  onClick={handleContinue}
-                  disabled={!canContinue}
-                  className={`inline-flex items-center justify-center rounded-full px-8 py-4 text-sm font-semibold uppercase tracking-[0.15em] transition ${
-                    canContinue
-                      ? "bg-amber-400 text-[#0b1728] shadow-lg shadow-amber-400/25 hover:bg-amber-300"
-                      : "cursor-not-allowed bg-white/10 text-slate-500"
+          <div className="rounded-3xl border border-white/10 bg-[#0f172c] p-5">
+            <div className="mb-3 text-xs uppercase tracking-[0.3em] text-slate-400">Korean Keyboard</div>
+            <div className="space-y-2">
+              {KEYBOARD_ROWS.map((row, rowIndex) => (
+                <div
+                  key={rowIndex}
+                  className={`grid gap-2 ${
+                    rowIndex === 0
+                      ? "grid-cols-10"
+                      : rowIndex === 1
+                        ? "ml-3 grid-cols-9 sm:ml-4"
+                        : "ml-8 grid-cols-7 sm:ml-10"
                   }`}
                 >
-                  {isLastWritingStep && currentAnswerIsCorrect ? "Finish" : "Continue"}
-                </button>
-
-                <div className="text-xs text-slate-500">You can only continue after a correct answer.</div>
-              </div>
+                  {row.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => onPressKey(key)}
+                      className={`${keyboardButtonClass} ${highlightedKeyClass(key)}`}
+                    >
+                      {shiftEnabled && SHIFT_MAP[key] ? SHIFT_MAP[key] : key}
+                    </button>
+                  ))}
+                </div>
+              ))}
             </div>
+
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              <button type="button" onClick={() => setShiftEnabled((prev) => !prev)} className={`${keyboardButtonClass} ${shiftEnabled ? "ring-2 ring-amber-400" : ""}`}>
+                Shift
+              </button>
+              <button type="button" onClick={() => keyboardInput("SPACE")} className={`${keyboardButtonClass} col-span-2`}>
+                Space
+              </button>
+              <button type="button" onClick={() => keyboardInput("BACKSPACE")} className={keyboardButtonClass}>
+                Backspace
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={handleContinue}
+              disabled={!canContinue}
+              className={`inline-flex items-center justify-center rounded-full px-8 py-4 text-sm font-semibold uppercase tracking-[0.15em] transition ${
+                canContinue
+                  ? "bg-amber-400 text-[#0b1728] shadow-lg shadow-amber-400/25 hover:bg-amber-300"
+                  : "cursor-not-allowed bg-white/10 text-slate-500"
+              }`}
+            >
+              {isLastWritingStep && currentAnswerIsCorrect ? "Finish" : "Continue"}
+            </button>
           </div>
         </div>
       ) : (
