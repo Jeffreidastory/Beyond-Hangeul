@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import path from "path";
 import { promises as fs } from "fs";
 import { setOtpForEmail } from "@/lib/otpStore";
 
@@ -8,14 +9,16 @@ function createOtp() {
 }
 
 async function loadEnvFallback() {
-  const candidates = ["../../../../../.env.local", "../../../../../.env"];
+  const candidates = [
+    path.resolve(process.cwd(), ".env.local"),
+    path.resolve(process.cwd(), ".env"),
+  ];
 
-  for (const relativePath of candidates) {
-    const envFile = new URL(relativePath, import.meta.url);
+  for (const envFile of candidates) {
     try {
       const raw = await fs.readFile(envFile, "utf8");
       return raw
-      .split(/\r?\n/)
+        .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("#"))
       .reduce((acc, line) => {
