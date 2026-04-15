@@ -1381,7 +1381,43 @@ async function fetchSharedModulesViaApi() {
   }
 }
 
-export async function listModulesShared() {
+const adminCache = {
+  modules: null,
+  containers: null,
+  worksheets: null,
+  payments: null,
+  users: null,
+};
+
+export function getAdminCacheSnapshot() {
+  return {
+    modules: adminCache.modules,
+    containers: adminCache.containers,
+    worksheets: adminCache.worksheets,
+    payments: adminCache.payments,
+    users: adminCache.users,
+  };
+}
+
+export function invalidateAdminCache(keys = []) {
+  if (!Array.isArray(keys) || keys.length === 0) {
+    Object.keys(adminCache).forEach((key) => {
+      adminCache[key] = null;
+    });
+    return;
+  }
+  keys.forEach((key) => {
+    if (adminCache.hasOwnProperty(key)) {
+      adminCache[key] = null;
+    }
+  });
+}
+
+export async function listModulesShared({ forceReload = false } = {}) {
+  if (!forceReload && adminCache.modules) {
+    return adminCache.modules;
+  }
+
   try {
     const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
@@ -1393,7 +1429,9 @@ export async function listModulesShared() {
 
     if (error) throw error;
     const remoteModules = (data || []).map(mapModuleRowToModel);
-    return mergeLocalModuleContainerMetadata(remoteModules);
+    const merged = mergeLocalModuleContainerMetadata(remoteModules);
+    adminCache.modules = merged;
+    return merged;
   } catch (error) {
     console.warn("listModulesShared failed, retrying with minimal module fields:", error);
     try {
@@ -1407,7 +1445,9 @@ export async function listModulesShared() {
 
       if (!minimalError) {
         const remoteModules = (data || []).map(mapModuleRowToModel);
-        return mergeLocalModuleContainerMetadata(remoteModules);
+        const merged = mergeLocalModuleContainerMetadata(remoteModules);
+        adminCache.modules = merged;
+        return merged;
       }
 
       console.warn("Minimal module field query also failed, using server API fallback:", minimalError);
@@ -1416,11 +1456,17 @@ export async function listModulesShared() {
     }
 
     const remoteModules = await fetchSharedModulesViaApi();
-    return mergeLocalModuleContainerMetadata(remoteModules);
+    const merged = mergeLocalModuleContainerMetadata(remoteModules);
+    adminCache.modules = merged;
+    return merged;
   }
 }
 
-export async function listWorksheetsShared() {
+export async function listWorksheetsShared({ forceReload = false } = {}) {
+  if (!forceReload && adminCache.worksheets) {
+    return adminCache.worksheets;
+  }
+
   try {
     const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
@@ -1429,7 +1475,9 @@ export async function listWorksheetsShared() {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return (data || []).map(mapWorksheetRowToModel);
+    const rows = (data || []).map(mapWorksheetRowToModel);
+    adminCache.worksheets = rows;
+    return rows;
   } catch (error) {
     throw normalizeError(error);
   }
@@ -1617,8 +1665,14 @@ async function fetchSharedContainersViaApi() {
   }
 }
 
-export async function listContainersShared() {
-  return await fetchSharedContainersViaApi();
+export async function listContainersShared({ forceReload = false } = {}) {
+  if (!forceReload && adminCache.containers) {
+    return adminCache.containers;
+  }
+
+  const rows = await fetchSharedContainersViaApi();
+  adminCache.containers = rows;
+  return rows;
 }
 
 async function callAdminContainerApi(method, body) {
@@ -1712,7 +1766,11 @@ export async function deleteModuleShared(moduleId) {
   if (error) throw error;
 }
 
-export async function listPaymentsShared() {
+export async function listPaymentsShared({ forceReload = false } = {}) {
+  if (!forceReload && adminCache.payments) {
+    return adminCache.payments;
+  }
+
   try {
     const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
@@ -1724,7 +1782,9 @@ export async function listPaymentsShared() {
       console.warn("Payment records fetch failed, returning empty payment list:", error);
       return [];
     }
-    return (data || []).map(mapPaymentRowToModel);
+    const rows = (data || []).map(mapPaymentRowToModel);
+    adminCache.payments = rows;
+    return rows;
   } catch (error) {
     console.warn("Payment records fetch exception, returning empty payment list:", error);
     return [];
@@ -1846,8 +1906,12 @@ export async function approvePaymentAndGrantAccessShared(paymentId) {
   }
 }
 
-export async function listUsersWithStatusShared(initialUsers = []) {
+export async function listUsersWithStatusShared(initialUsers = [], { forceReload = false } = {}) {
   const users = syncUsers(initialUsers);
+
+  if (!forceReload && adminCache.users) {
+    return adminCache.users.map((user) => ({ ...user }));
+  }
 
   try {
     const supabase = getSupabaseBrowserClient();
@@ -1914,6 +1978,9 @@ export async function listUsersWithStatusShared(initialUsers = []) {
         latestPayment: paymentRecords[0] || null,
       };
     });
+
+    adminCache.users = result;
+    return result;
   } catch (error) {
     throw normalizeError(error);
   }

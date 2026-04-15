@@ -21,6 +21,8 @@ import {
   deleteContainerShared,
   deleteModuleShared,
   deleteWorksheetShared,
+  getAdminCacheSnapshot,
+  invalidateAdminCache,
   listContainersShared,
   listModulesShared,
   listPaymentsShared,
@@ -126,6 +128,7 @@ export default function AdminWorkspace({
   const [isWorksheetModalOpen, setIsWorksheetModalOpen] = useState(false);
   const [previewModule, setPreviewModule] = useState(null);
   const [moduleFilterTab, setModuleFilterTab] = useState("all");
+  const [isLoadingAdminData, setIsLoadingAdminData] = useState(true);
   const [isSavingContainer, setIsSavingContainer] = useState(false);
   const [isSavingEditedModule, setIsSavingEditedModule] = useState(false);
   const [containers, setContainers] = useState([]);
@@ -164,63 +167,83 @@ export default function AdminWorkspace({
     router.refresh();
   };
 
-  const refreshAll = useCallback(async () => {
+  const refreshAll = useCallback(async (forceReload = false) => {
     syncUsers(initialUsers);
 
-    const results = await Promise.allSettled([
-      listModulesShared(),
-      listUsersWithStatusShared(initialUsers),
-      listPaymentsShared(),
-      listWorksheetsShared(),
-      listContainersShared(),
-    ]);
+    let fetchPromises = [];
+    let sectionKeys = [];
 
-    const [modulesResult, usersResult, paymentsResult, worksheetsResult, containersResult] = results;
+    switch (activeSection) {
+      case "modules":
+        fetchPromises = [listModulesShared({ forceReload }), listContainersShared({ forceReload })];
+        sectionKeys = ["modules", "containers"];
+        break;
+      case "path":
+        fetchPromises = [listModulesShared({ forceReload }), listWorksheetsShared({ forceReload })];
+        sectionKeys = ["modules", "worksheets"];
+        break;
+      case "worksheets":
+        fetchPromises = [listWorksheetsShared({ forceReload })];
+        sectionKeys = ["worksheets"];
+        break;
+      case "users":
+        fetchPromises = [listUsersWithStatusShared(initialUsers, { forceReload })];
+        sectionKeys = ["users"];
+        break;
+      case "sales-report":
+        fetchPromises = [listPaymentsShared({ forceReload }), listUsersWithStatusShared(initialUsers, { forceReload })];
+        sectionKeys = ["payments", "users"];
+        break;
+      default:
+        fetchPromises = [
+          listModulesShared({ forceReload }),
+          listUsersWithStatusShared(initialUsers, { forceReload }),
+          listPaymentsShared({ forceReload }),
+          listWorksheetsShared({ forceReload }),
+          listContainersShared({ forceReload }),
+        ];
+        sectionKeys = ["modules", "users", "payments", "worksheets", "containers"];
+        break;
+    }
+
+    const results = await Promise.allSettled(fetchPromises);
+    const sectionResults = Object.fromEntries(
+      sectionKeys.map((key, index) => [key, results[index]])
+    );
     let refreshError = false;
 
-    if (modulesResult.status === "fulfilled") {
-      setModules(modulesResult.value);
-    } else {
-      console.error("Unable to refresh modules:", modulesResult.reason);
-      refreshError = true;
-      setModules([]);
-    }
+    const applyRefresh = (key, setter, defaultValue = [], warnOnly = false) => {
+      const result = sectionResults[key];
+      if (!result) return;
 
-    if (usersResult.status === "fulfilled") {
-      setUsers(usersResult.value);
-    } else {
-      console.error("Unable to refresh users:", usersResult.reason);
-      refreshError = true;
-      setUsers([]);
-    }
+      if (result.status === "fulfilled") {
+        setter(result.value);
+      } else {
+        const logMessage = `Unable to refresh ${key}:`;
+        if (warnOnly) {
+          console.warn(logMessage, result.reason);
+        } else {
+          console.error(logMessage, result.reason);
+          refreshError = true;
+        }
+        setter(defaultValue);
+      }
+    };
 
-    if (paymentsResult.status === "fulfilled") {
-      setPayments(paymentsResult.value);
-    } else {
-      console.warn("Unable to refresh payments, continuing without payment records:", paymentsResult.reason);
-      setPayments([]);
-    }
+    applyRefresh("modules", setModules);
+    applyRefresh("users", setUsers);
+    applyRefresh("payments", setPayments, [], true);
+    applyRefresh("worksheets", setWorksheets);
+    applyRefresh("containers", setContainers);
 
-    if (worksheetsResult.status === "fulfilled") {
-      setWorksheets(worksheetsResult.value);
-    } else {
-      console.error("Unable to refresh worksheets:", worksheetsResult.reason);
-      refreshError = true;
-      setWorksheets([]);
-    }
-
-    if (containersResult.status === "fulfilled") {
-      setContainers(containersResult.value);
-    } else {
-      console.error("Unable to refresh containers:", containersResult.reason);
-      refreshError = true;
-      setContainers([]);
+    if (refreshError) {
+      setStatusMessage("Some shared admin data could not be loaded. Check backend connectivity.");
     }
 
     if (refreshError) {
       setStatusMessage("Some shared admin data could not be loaded. Check backend connectivity.");
     }
-  }, [initialUsers]);
+  }, [activeSection, initialUsers]);
 
   const openCreateContainerModal = () => {
     setEditingContainer(null);
@@ -267,23 +290,29 @@ export default function AdminWorkspace({
         actualContainerId = createdContainer.id;
       }
 
-      for (const module of modules) {
+      const moduleUpdates = modules.map((module) => {
         if (selectedModuleIds.includes(module.id)) {
-          await updateModuleShared(module.id, {
+          return updateModuleShared(module.id, {
             containerId: actualContainerId,
             containerTitle: trimmedTitle,
             containerSubtitle: containerForm.subtitle.trim(),
           });
-        } else if (editingContainer && module.containerId === actualContainerId) {
-          await updateModuleShared(module.id, {
-            containerId: "",
+        }
+
+        if (editingContainer && module.containerId === actualContainerId) {
+          return updateModuleShared(module.id, {
+            containerId: null,
             containerTitle: "",
             containerSubtitle: "",
           });
         }
-      }
 
-      await refreshAll();
+        return null;
+      }).filter(Boolean);
+
+      await Promise.all(moduleUpdates);
+      invalidateAdminCache(["modules", "containers"]);
+      await refreshAll(true);
       setStatusMessage(editingContainer ? "Container updated." : "Container created.");
       setIsContainerModalOpen(false);
       setEditingContainer(null);
@@ -301,24 +330,39 @@ export default function AdminWorkspace({
   };
 
   const removeContainer = async (container) => {
-    for (const module of modules) {
-      if (module.containerId === container.id) {
-        await updateModuleShared(module.id, {
-          containerId: "",
+    const moduleUpdates = modules
+      .filter((module) => module.containerId === container.id)
+      .map((module) =>
+        updateModuleShared(module.id, {
+          containerId: null,
           containerTitle: "",
           containerSubtitle: "",
-        });
-      }
-    }
+        })
+      );
+
+    await Promise.all(moduleUpdates);
     await deleteContainerShared(container.id);
+    invalidateAdminCache(["modules", "containers"]);
     setStatusMessage(`Container '${container.title}' removed.`);
-    await refreshAll();
+    await refreshAll(true);
   };
 
 
   useEffect(() => {
-    void refreshAll();
-  }, []);
+    const cached = getAdminCacheSnapshot();
+    if (cached.modules || cached.containers || cached.worksheets || cached.payments || cached.users) {
+      if (cached.modules) setModules(cached.modules);
+      if (cached.containers) setContainers(cached.containers);
+      if (cached.worksheets) setWorksheets(cached.worksheets);
+      if (cached.payments) setPayments(cached.payments);
+      if (cached.users) setUsers(cached.users);
+      setIsLoadingAdminData(false);
+    }
+
+    void refreshAll(true).finally(() => {
+      setIsLoadingAdminData(false);
+    });
+  }, [refreshAll]);
 
   const handleAdminRealtimeUpdate = useCallback(() => {
     if (realtimeReloadTimerRef.current) {
