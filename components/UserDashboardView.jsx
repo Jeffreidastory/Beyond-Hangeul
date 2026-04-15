@@ -10,7 +10,9 @@ import {
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Circle,
   CheckSquare,
   Compass,
@@ -134,6 +136,9 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
   const [worksheetMode, setWorksheetMode] = useState("writing");
   const [moduleProgress, setModuleProgress] = useState({});
   const [worksheetScores, setWorksheetScores] = useState({});
+  const [openModulePreviews, setOpenModulePreviews] = useState({});
+  const [modulePreviewUrls, setModulePreviewUrls] = useState({});
+  const [modulePreviewLoading, setModulePreviewLoading] = useState({});
   const [calendarMatrix, setCalendarMatrix] = useState(null);
   const realtimeReloadTimerRef = useRef(null);
 
@@ -225,6 +230,32 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
       )
     );
   }, [query]);
+
+  const renderModuleTopic = useCallback(
+    (topicTitle) => {
+      if (!topicTitle) return null;
+      const lines = String(topicTitle)
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (!lines.length) return null;
+
+      return (
+        <div className="mt-1 space-y-1 text-sm italic">
+          {lines.map((line, index) => {
+            const cleanedLine = line.replace(/^\u2022\s*/u, "").replace(/^[-*]\s*/u, "");
+            return (
+              <div key={index} className="flex items-start gap-2 text-slate-300">
+                <span className="mt-0.5 text-xs text-amber-300">•</span>
+                <span className="whitespace-pre-wrap">{cleanedLine}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    },
+    []
+  );
 
   const refreshLearningData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
@@ -590,13 +621,23 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
     }
   }, [getStoragePathFromPublicUrl]);
 
-  const handleOpenModuleResource = useCallback(async (module) => {
-    if (!module?.resourceFileData) return;
-    const isPdf = module.resourceFileType === "application/pdf" || /\.pdf$/i.test(module.resourceFileName || "");
-    const accessibleUrl = await getAccessibleModuleFileUrl(module.resourceFileData);
+  const toggleModulePreview = useCallback((module) => {
+    setOpenModulePreviews((prev) => ({ ...prev, [module.id]: !prev[module.id] }));
+  }, []);
+
+  const handleOpenModuleResource = useCallback(async (module, attachment = null) => {
+    const file = attachment || {
+      fileData: module.resourceFileData,
+      fileType: module.resourceFileType,
+      fileName: module.resourceFileName,
+    };
+
+    if (!file?.fileData) return;
+    const accessibleUrl = await getAccessibleModuleFileUrl(file.fileData);
 
     window.open(accessibleUrl, "_blank", "noopener,noreferrer");
 
+    const isPdf = file.fileType === "application/pdf" || /\.pdf$/i.test(file.fileName || "");
     if (!isPdf) return;
 
     setModuleProgress((prev) => {
@@ -861,19 +902,31 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
       const moduleProgressPercent = moduleScore && moduleScore.completed
         ? 100
         : Math.max(0, Math.min(100, Number(moduleScore?.progressPercent || 0)));
-      const isPdfResource = module.resourceFileType === "application/pdf" || /\.pdf$/i.test(module.resourceFileName || "");
-      const truncatedFileName = (module.resourceFileName || "").length > 34
-        ? `${String(module.resourceFileName).slice(0, 31)}...`
-        : module.resourceFileName;
+        const attachments = Array.isArray(module.resourceFiles)
+          ? module.resourceFiles
+          : module.resourceFileData
+          ? [
+              {
+                fileName: module.resourceFileName || "",
+                fileType: module.resourceFileType || "",
+                fileData: module.resourceFileData,
+              },
+            ]
+          : [];
+        const hasAttachments = attachments.length > 0;
+        const sectionLabel = `${attachments.length} section${attachments.length === 1 ? "" : "s"}`;
 
       return (
         <article
           key={module.id}
-          className={`relative flex h-full rounded-xl border p-4 transition ${
-            isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"
+          className={`relative flex h-full rounded-[28px] border border-white/10 bg-slate-800/70 shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition ${
+            isLight ? "border-slate-200 bg-slate-100 shadow-sm" : ""
           }`}
         >
-          <div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1 pointer-events-auto">
+          <div className={`flex w-full flex-col rounded-2xl border p-4 transition ${
+            isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"
+          }`}>
+            <div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1 pointer-events-auto">
             <span
               className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                 isPremium
@@ -901,56 +954,65 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
 
           <div className={`relative z-10 flex w-full flex-col ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "opacity-60 pointer-events-none text-white" : ""}`}>
             <h3 className={`pr-20 text-lg font-semibold ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : ""}`}>{module.moduleName}</h3>
-            <p className={`mt-2 text-sm italic ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : isLight ? "text-slate-600" : "text-slate-300"}`}>{module.topicTitle}</p>
+            <div className="mt-1 flex items-end justify-between gap-4">
+              <div className="min-w-0">
+                {renderModuleTopic(module.topicTitle) || (
+                  <p className={`text-sm italic ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : isLight ? "text-slate-600" : "text-slate-300"}`}>{module.topicTitle}</p>
+                )}
+              </div>
 
-            <div className="mt-auto pt-4">
+              {hasAttachments && !module.isInactive && !module.isLocked ? (
+                <div className="flex-shrink-0 text-right">
+                  <button
+                    type="button"
+                    onClick={() => void toggleModulePreview(module)}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/90 px-4 py-2 text-xs font-semibold text-slate-100 shadow-sm transition hover:bg-slate-800"
+                  >
+                    <span>{sectionLabel}</span>
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform ${openModulePreviews[module.id] ? "rotate-180" : "rotate-0"}`}
+                    />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-0">
               {module.isInactive ? (
                 <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                   This module is temporarily inactive.
                 </p>
               ) : !module.isLocked ? (
                 <>
-                  {module.resourceFileName && module.resourceFileData ? (
-                    <div className="flex min-h-5 items-center gap-2">
-                      {isPdfResource ? (
-                        moduleProgressPercent >= 100 ? (
-                          <CheckCircle2 size={16} className="text-emerald-400" aria-label="PDF completed" />
-                        ) : (
-                          <Circle size={16} className={isLight ? "text-slate-500" : "text-slate-300"} aria-label="PDF not completed" />
-                        )
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenModuleResource(module)}
-                        title={module.resourceFileName}
-                        className="max-w-full truncate text-left text-xs font-semibold text-emerald-300 underline decoration-emerald-400/60 underline-offset-2 hover:text-emerald-200"
-                      >
-                        {truncatedFileName}
-                      </button>
+                  {hasAttachments && openModulePreviews[module.id] ? (
+                    <div className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/90 p-0 text-sm text-slate-300 shadow-lg">
+                      {attachments.map((attachment, index) => (
+                        <button
+                          key={`${attachment.fileName || "file"}-${index}`}
+                          type="button"
+                          onClick={() => void handleOpenModuleResource(module, attachment)}
+                          className={`flex w-full items-center gap-3 px-3 py-3 text-left text-slate-100 transition hover:bg-white/5 ${
+                            index > 0 ? "border-t border-white/10" : ""
+                          }`}
+                        >
+                          <FileText size={16} className="flex-shrink-0 text-amber-300" />
+                          <span className="min-w-0 truncate text-sm">{attachment.fileName || `Section ${index + 1}`}</span>
+                          <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-slate-400">
+                            Open
+                            <ChevronRight size={14} />
+                          </span>
+                        </button>
+                      ))}
                     </div>
-                  ) : module.resourceFileName ? (
-                    <p className="min-h-5 truncate text-xs text-amber-300" title={module.resourceFileName}>
-                      {truncatedFileName} (file unavailable)
-                    </p>
-                  ) : (
-                    <div className="min-h-5" />
-                  )}
-
-                  <div className="mt-3">
-                    <div className="mb-1 flex items-center justify-between text-xs">
-                      <span>{moduleProgressPercent}% complete</span>
-                      <span className="text-slate-400">{module.isLocked ? "Locked" : "Unlocked"}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full rounded-full bg-emerald-400" style={{ width: `${moduleProgressPercent}%` }} />
-                    </div>
-                  </div>
+                  ) : null}
                 </>
               ) : (
                 <p className="rounded-lg border border-slate-500/40 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">Locked premium module</p>
               )}
             </div>
           </div>
+        </div>
         </article>
       );
     };
@@ -969,7 +1031,7 @@ export default function UserDashboardView({ userId, userName, userEmail, stats, 
                   {group.subtitle ? <p className="mt-1 text-sm text-slate-400">{group.subtitle}</p> : null}
                 </div>
               </div>
-              <div className="mt-3 grid gap-0.5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-3 grid gap-3">
                 {group.modules.length > 0 ? (
                   group.modules.map(renderModuleCard)
                 ) : (
