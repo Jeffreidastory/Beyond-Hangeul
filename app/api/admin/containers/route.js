@@ -1,16 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabaseServer";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-
-const url = String(process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
-const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-
-function getServiceClient() {
-  if (!url || !serviceRoleKey) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
-  }
-  return createSupabaseClient(url, serviceRoleKey);
-}
 
 async function requireAdminProfile() {
   const serverSupabase = await createServerClient();
@@ -51,8 +40,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Container title is required." }, { status: 400 });
     }
 
-    const serviceClient = getServiceClient();
-    const { data, error } = await serviceClient
+    const serverSupabase = await createServerClient();
+    const { data, error } = await serverSupabase
       .from("learning_containers")
       .insert({ title, subtitle, created_at: payload.createdAt || new Date().toISOString() })
       .select("id, title, subtitle, created_at")
@@ -92,8 +81,8 @@ export async function PATCH(request) {
     if (title !== undefined) nextPatch.title = title;
     if (subtitle !== undefined) nextPatch.subtitle = subtitle;
 
-    const serviceClient = getServiceClient();
-    const { error } = await serviceClient.from("learning_containers").update(nextPatch).eq("id", containerId);
+    const serverSupabase = await createServerClient();
+    const { error } = await serverSupabase.from("learning_containers").update(nextPatch).eq("id", containerId);
     if (error) {
       return NextResponse.json({ error: error.message || String(error) }, { status: 500 });
     }
@@ -117,8 +106,8 @@ export async function DELETE(request) {
       return NextResponse.json({ error: "Container id is required." }, { status: 400 });
     }
 
-    const serviceClient = getServiceClient();
-    const { error } = await serviceClient.from("learning_containers").delete().eq("id", containerId);
+    const serverSupabase = await createServerClient();
+    const { error } = await serverSupabase.from("learning_containers").delete().eq("id", containerId);
     if (error) {
       return NextResponse.json({ error: error.message || String(error) }, { status: 500 });
     }

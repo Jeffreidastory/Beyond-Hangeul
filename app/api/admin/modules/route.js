@@ -1,16 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabaseServer";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-
-const url = String(process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
-const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-
-function getServiceClient() {
-  if (!url || !serviceRoleKey) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
-  }
-  return createSupabaseClient(url, serviceRoleKey);
-}
 
 async function requireAdminProfile() {
   const serverSupabase = await createServerClient();
@@ -63,8 +52,8 @@ export async function PATCH(request) {
     if (payload.containerTitle !== undefined) nextPatch.container_title = String(payload.containerTitle || "");
     if (payload.containerSubtitle !== undefined) nextPatch.container_subtitle = String(payload.containerSubtitle || "");
 
-    const serviceClient = getServiceClient();
-    const { error } = await serviceClient.from("learning_modules").update(nextPatch).eq("id", moduleId);
+    const serverSupabase = await createServerClient();
+    const { error } = await serverSupabase.from("learning_modules").update(nextPatch).eq("id", moduleId);
 
     if (error) {
       return NextResponse.json({ error: error.message || String(error) }, { status: 500 });
