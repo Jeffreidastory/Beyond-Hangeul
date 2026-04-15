@@ -1678,7 +1678,7 @@ export default function AdminWorkspace({
               </div>
 
               <select
-                value={moduleForm.status}
+                value={moduleForm.status || MODULE_STATUS.ACTIVE}
                 onChange={(event) => setModuleForm((prev) => ({ ...prev, status: event.target.value }))}
                 className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
               >
@@ -2033,7 +2033,6 @@ export default function AdminWorkspace({
                 value={editingModule.status || MODULE_STATUS.ACTIVE}
                 onChange={(event) => setEditingModule((prev) => ({ ...prev, status: event.target.value }))}
                 className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
-                disabled={autoReactivateAfterEdit}
               >
                 <option value={MODULE_STATUS.ACTIVE}>Active</option>
                 <option value={MODULE_STATUS.DRAFT}>Draft</option>
