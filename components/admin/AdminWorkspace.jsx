@@ -126,6 +126,7 @@ export default function AdminWorkspace({
   const [statusMessage, setStatusMessage] = useState("");
   const [isCreateModuleModalOpen, setIsCreateModuleModalOpen] = useState(false);
   const [isWorksheetModalOpen, setIsWorksheetModalOpen] = useState(false);
+  const [isSavingWorksheet, setIsSavingWorksheet] = useState(false);
   const [previewModule, setPreviewModule] = useState(null);
   const [moduleFilterTab, setModuleFilterTab] = useState("all");
   const [isLoadingAdminData, setIsLoadingAdminData] = useState(true);
@@ -953,31 +954,46 @@ export default function AdminWorkspace({
       return;
     }
 
-    if (editingWorksheetId) {
-      await updateWorksheetShared(editingWorksheetId, {
-        title: worksheetForm.title.trim(),
-        accessType: worksheetForm.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-        resourceFileName: worksheetForm.resourceFileName || "",
-        resourceFileType: worksheetForm.resourceFileType || "",
-        resourceFileData: worksheetForm.resourceFileData || "",
-        entries: normalizedEntries,
-      });
-      setStatusMessage("Worksheet updated.");
-    } else {
-      await createWorksheetShared({
-        title: worksheetForm.title.trim(),
-        accessType: worksheetForm.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-        resourceFileName: worksheetForm.resourceFileName || "",
-        resourceFileType: worksheetForm.resourceFileType || "",
-        resourceFileData: worksheetForm.resourceFileData || "",
-        entries: normalizedEntries,
-      });
-      setStatusMessage("Worksheet created.");
-    }
+    setIsSavingWorksheet(true);
+    try {
+      if (editingWorksheetId) {
+        await updateWorksheetShared(editingWorksheetId, {
+          title: worksheetForm.title.trim(),
+          accessType: worksheetForm.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
+          resourceFileName: worksheetForm.resourceFileName || "",
+          resourceFileType: worksheetForm.resourceFileType || "",
+          resourceFileData: worksheetForm.resourceFileData || "",
+          entries: normalizedEntries,
+        });
+        setStatusMessage("Worksheet updated.");
+      } else {
+        await createWorksheetShared({
+          title: worksheetForm.title.trim(),
+          accessType: worksheetForm.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
+          resourceFileName: worksheetForm.resourceFileName || "",
+          resourceFileType: worksheetForm.resourceFileType || "",
+          resourceFileData: worksheetForm.resourceFileData || "",
+          entries: normalizedEntries,
+        });
+        setStatusMessage("Worksheet created.");
+      }
 
-    setEditingWorksheetId("");
-    setWorksheetForm(defaultWorksheet);
-    setIsWorksheetModalOpen(false);
+      invalidateAdminCache(["worksheets"]);
+      await refreshAll(true);
+      setEditingWorksheetId("");
+      setWorksheetForm(defaultWorksheet);
+      setIsWorksheetModalOpen(false);
+    } catch (error) {
+      console.error("Worksheet save failed:", error);
+      const errorText =
+        error?.message ||
+        error?.details ||
+        error?.hint ||
+        (typeof error === "object" ? JSON.stringify(error) : String(error));
+      setStatusMessage(errorText || "Unable to save worksheet.");
+    } finally {
+      setIsSavingWorksheet(false);
+    }
     void refreshAll();
   };
 
@@ -1955,8 +1971,18 @@ export default function AdminWorkspace({
               >
                 Cancel
               </button>
-              <button type="submit" className="rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-[#0b1728]">
-                {editingWorksheetId ? "Save Worksheet" : "Create Worksheet"}
+              <button
+                type="submit"
+                disabled={isSavingWorksheet}
+                className="rounded-lg bg-amber-400 px-3 py-2 text-sm font-semibold text-[#0b1728] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingWorksheet
+                  ? editingWorksheetId
+                    ? "Saving..."
+                    : "Creating..."
+                  : editingWorksheetId
+                  ? "Save Worksheet"
+                  : "Create Worksheet"}
               </button>
             </div>
           </form>
