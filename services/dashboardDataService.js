@@ -1639,6 +1639,24 @@ async function callAdminContainerApi(method, body) {
   return payload;
 }
 
+async function callAdminModuleApi(method, body) {
+  const response = await fetch("/api/admin/modules", {
+    method,
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.warn(`callAdminModuleApi ${method} failed`, response.status, response.statusText, payload);
+    throw normalizeError(payload.error || payload || `Module API ${method} failed`);
+  }
+  return payload;
+}
+
 export async function createContainerShared(payload) {
   const response = await callAdminContainerApi("POST", {
     title: payload.title || "Untitled Container",
@@ -1668,23 +1686,24 @@ export async function deleteContainerShared(containerId) {
 }
 
 export async function updateModuleShared(moduleId, patch) {
-  const supabase = getSupabaseBrowserClient();
   const nextPatch = {};
 
-  if (patch.moduleName !== undefined) nextPatch.module_name = patch.moduleName;
-  if (patch.topicTitle !== undefined) nextPatch.topic_title = patch.topicTitle;
-  if (patch.resourceFileName !== undefined) nextPatch.resource_file_name = patch.resourceFileName;
-  if (patch.resourceFileData !== undefined) nextPatch.resource_file_data = patch.resourceFileData;
-  if (patch.resourceFileType !== undefined) nextPatch.resource_file_type = patch.resourceFileType;
+  if (patch.moduleName !== undefined) nextPatch.moduleName = patch.moduleName;
+  if (patch.topicTitle !== undefined) nextPatch.topicTitle = patch.topicTitle;
+  if (patch.resourceFileName !== undefined) nextPatch.resourceFileName = patch.resourceFileName;
+  if (patch.resourceFileData !== undefined) nextPatch.resourceFileData = patch.resourceFileData;
+  if (patch.resourceFileType !== undefined) nextPatch.resourceFileType = patch.resourceFileType;
   if (patch.type !== undefined) nextPatch.type = patch.type;
   if (patch.price !== undefined) nextPatch.price = patch.price == null ? null : Number(patch.price);
   if (patch.status !== undefined) nextPatch.status = patch.status;
-  if (patch.containerId !== undefined) nextPatch.container_id = patch.containerId || null;
-  if (patch.containerTitle !== undefined) nextPatch.container_title = patch.containerTitle || "";
-  if (patch.containerSubtitle !== undefined) nextPatch.container_subtitle = patch.containerSubtitle || "";
+  if (patch.containerId !== undefined) nextPatch.containerId = patch.containerId || null;
+  if (patch.containerTitle !== undefined) nextPatch.containerTitle = patch.containerTitle || "";
+  if (patch.containerSubtitle !== undefined) nextPatch.containerSubtitle = patch.containerSubtitle || "";
 
-  const { error } = await supabase.from("learning_modules").update(nextPatch).eq("id", moduleId);
-  if (error) throw normalizeError(error);
+  await callAdminModuleApi("PATCH", {
+    id: moduleId,
+    ...nextPatch,
+  });
 }
 
 export async function deleteModuleShared(moduleId) {
