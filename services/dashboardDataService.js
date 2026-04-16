@@ -1252,6 +1252,12 @@ export function upsertModuleProgress(payload) {
 }
 
 function mapModuleRowToModel(row) {
+  const resourceFiles = Array.isArray(row.resource_files)
+    ? row.resource_files
+    : row.resource_files
+    ? JSON.parse(row.resource_files || "[]")
+    : [];
+
   return {
     id: row.id,
     moduleName: row.module_name,
@@ -1259,6 +1265,7 @@ function mapModuleRowToModel(row) {
     resourceFileName: row.resource_file_name || "",
     resourceFileData: row.resource_file_data || "",
     resourceFileType: row.resource_file_type || "",
+    resourceFiles: Array.isArray(resourceFiles) ? resourceFiles : [],
     type: row.type || MODULE_TYPE.FREE,
     price: row.price == null ? null : Number(row.price),
     status: row.status || MODULE_STATUS.ACTIVE,
@@ -1391,6 +1398,8 @@ const adminCache = {
   users: null,
 };
 
+const userPaymentsCache = new Map();
+
 export function getAdminCacheSnapshot() {
   return {
     modules: adminCache.modules,
@@ -1425,7 +1434,7 @@ export async function listModulesShared({ forceReload = false } = {}) {
     const { data, error } = await supabase
       .from("learning_modules")
       .select(
-        "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
+        "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, resource_files, type, price, status, created_at, container_id, container_title, container_subtitle"
       )
       .order("created_at", { ascending: false });
 
@@ -1441,7 +1450,7 @@ export async function listModulesShared({ forceReload = false } = {}) {
       const { data, error: minimalError } = await supabase
         .from("learning_modules")
         .select(
-          "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at"
+          "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, resource_files, type, price, status, created_at"
         )
         .order("created_at", { ascending: false });
 
@@ -1615,7 +1624,7 @@ export async function migrateLocalWorksheetsToShared() {
 
 export async function createModuleShared(payload) {
   const supabase = getSupabaseBrowserClient();
-  const { data, error } = await supabase
+  let result = await supabase
     .from("learning_modules")
     .insert({
       module_name: payload.moduleName,
@@ -1623,6 +1632,7 @@ export async function createModuleShared(payload) {
       resource_file_name: payload.resourceFileName || "",
       resource_file_data: payload.resourceFileData || "",
       resource_file_type: payload.resourceFileType || "",
+      resource_files: payload.resourceFiles || [],
       type: payload.type || MODULE_TYPE.FREE,
       price: payload.type === MODULE_TYPE.PAID ? Number(payload.price || 0) : null,
       status: payload.status || MODULE_STATUS.ACTIVE,
@@ -1635,8 +1645,30 @@ export async function createModuleShared(payload) {
     )
     .single();
 
-  if (error) throw error;
-  return mapModuleRowToModel(data);
+  if (result.error && result.error.message?.includes("resource_files")) {
+    result = await supabase
+      .from("learning_modules")
+      .insert({
+        module_name: payload.moduleName,
+        topic_title: payload.topicTitle,
+        resource_file_name: payload.resourceFileName || "",
+        resource_file_data: payload.resourceFileData || "",
+        resource_file_type: payload.resourceFileType || "",
+        type: payload.type || MODULE_TYPE.FREE,
+        price: payload.type === MODULE_TYPE.PAID ? Number(payload.price || 0) : null,
+        status: payload.status || MODULE_STATUS.ACTIVE,
+        container_id: payload.containerId || null,
+        container_title: payload.containerTitle || "",
+        container_subtitle: payload.containerSubtitle || "",
+      })
+      .select(
+        "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
+      )
+      .single();
+  }
+
+  if (result.error) throw result.error;
+  return mapModuleRowToModel(result.data);
 }
 
 async function fetchSharedContainersViaApi() {
@@ -1749,6 +1781,7 @@ export async function updateModuleShared(moduleId, patch) {
   if (patch.resourceFileName !== undefined) nextPatch.resourceFileName = patch.resourceFileName;
   if (patch.resourceFileData !== undefined) nextPatch.resourceFileData = patch.resourceFileData;
   if (patch.resourceFileType !== undefined) nextPatch.resourceFileType = patch.resourceFileType;
+  if (patch.resourceFiles !== undefined) nextPatch.resourceFiles = patch.resourceFiles;
   if (patch.type !== undefined) nextPatch.type = patch.type;
   if (patch.price !== undefined) nextPatch.price = patch.price == null ? null : Number(patch.price);
   if (patch.status !== undefined) nextPatch.status = patch.status;
@@ -1917,7 +1950,22 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
 
   try {
     const supabase = getSupabaseBrowserClient();
-    const [paymentsResult, accessResult, modulesResult] = await Promise.all([
+
+    let modulesResult = await supabase
+      .from("learning_modules")
+      .select(
+        "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, resource_files, type, price, status, created_at, container_id, container_title, container_subtitle"
+      );
+
+    if (modulesResult.error && modulesResult.error.message?.includes("resource_files")) {
+      modulesResult = await supabase
+        .from("learning_modules")
+        .select(
+          "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
+        );
+    }
+
+    const [paymentsResult, accessResult] = await Promise.all([
       supabase
         .from("payment_records")
         .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
@@ -1925,16 +1973,21 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
       supabase
         .from("user_module_access")
         .select("id, user_id, module_id, status, granted_at"),
-      supabase
-        .from("learning_modules")
-        .select(
-          "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
-        ),
     ]);
 
-    const payments = paymentsResult.error ? [] : (paymentsResult.data || []).map(mapPaymentRowToModel);
+    const payments = paymentsResult.error
+      ? Array.from(userPaymentsCache.values()).flat()
+      : (paymentsResult.data || []).map(mapPaymentRowToModel);
     if (paymentsResult.error) {
       console.warn("Ignoring payment fetch failure in shared user status:", paymentsResult.error);
+    } else {
+      const paymentsByUser = new Map();
+      payments.forEach((payment) => {
+        const list = paymentsByUser.get(payment.userId) || [];
+        list.push(payment);
+        paymentsByUser.set(payment.userId, list);
+      });
+      paymentsByUser.forEach((list, userId) => userPaymentsCache.set(userId, list));
     }
 
     const accessRows = accessResult.error ? [] : (accessResult.data || []).map(mapAccessRow);
@@ -1947,7 +2000,7 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
       console.warn("Ignoring module fetch failure in shared user status:", modulesResult.error);
     }
 
-    return users.map((user) => {
+    const result = users.map((user) => {
       const unlockedModuleIds = new Set(
         accessRows
           .filter((access) => access.userId === user.id && access.status === MODULE_ACCESS.UNLOCKED)
@@ -1991,13 +2044,24 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
 export async function getUserLearningDataShared(userId) {
   try {
     const supabase = getSupabaseBrowserClient();
-    const [modulesResult, accessResult, paymentsResult, sharedPaths, sharedWorksheets, containersResult] = await Promise.all([
-      supabase
+
+    let modulesResult = await supabase
+      .from("learning_modules")
+      .select(
+        "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, resource_files, type, price, status, created_at, container_id, container_title, container_subtitle"
+      )
+      .order("created_at", { ascending: true });
+
+    if (modulesResult.error && modulesResult.error.message?.includes("resource_files")) {
+      modulesResult = await supabase
         .from("learning_modules")
         .select(
           "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
         )
-        .order("created_at", { ascending: true }),
+        .order("created_at", { ascending: true });
+    }
+
+    const [accessResult, paymentsResult, sharedPaths, sharedWorksheets, containersResult] = await Promise.all([
       supabase
         .from("user_module_access")
         .select("id, user_id, module_id, status, granted_at")
@@ -2017,9 +2081,13 @@ export async function getUserLearningDataShared(userId) {
 
     const modules = (modulesResult.data || []).map(mapModuleRowToModel);
     const accessRows = (accessResult.data || []).map(mapAccessRow);
-    const payments = paymentsResult.error ? [] : (paymentsResult.data || []).map(mapPaymentRowToModel);
+    const payments = paymentsResult.error
+      ? userPaymentsCache.get(userId) || []
+      : (paymentsResult.data || []).map(mapPaymentRowToModel);
     if (paymentsResult.error) {
       console.warn("Ignoring payment fetch failure in user learning data:", paymentsResult.error);
+    } else {
+      userPaymentsCache.set(userId, payments);
     }
 
     const containers = (containersResult || []).map((row) => ({
