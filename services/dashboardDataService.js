@@ -1623,52 +1623,30 @@ export async function migrateLocalWorksheetsToShared() {
 }
 
 export async function createModuleShared(payload) {
-  const supabase = getSupabaseBrowserClient();
-  let result = await supabase
-    .from("learning_modules")
-    .insert({
-      module_name: payload.moduleName,
-      topic_title: payload.topicTitle,
-      resource_file_name: payload.resourceFileName || "",
-      resource_file_data: payload.resourceFileData || "",
-      resource_file_type: payload.resourceFileType || "",
-      resource_files: payload.resourceFiles || [],
-      type: payload.type || MODULE_TYPE.FREE,
-      price: payload.type === MODULE_TYPE.PAID ? Number(payload.price || 0) : null,
-      status: payload.status || MODULE_STATUS.ACTIVE,
-      container_id: payload.containerId || null,
-      container_title: payload.containerTitle || "",
-      container_subtitle: payload.containerSubtitle || "",
-    })
-    .select(
-      "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
-    )
-    .single();
+  const response = await callAdminModuleApi("POST", {
+    moduleName: payload.moduleName,
+    topicTitle: payload.topicTitle,
+    resourceFileName: payload.resourceFileName || "",
+    resourceFileData: payload.resourceFileData || "",
+    resourceFileType: payload.resourceFileType || "",
+    resourceFiles: payload.resourceFiles || [],
+    type: payload.type || MODULE_TYPE.FREE,
+    price: payload.type === MODULE_TYPE.PAID ? Number(payload.price || 0) : null,
+    status: payload.status || MODULE_STATUS.ACTIVE,
+    containerId: payload.containerId || null,
+    containerTitle: payload.containerTitle || "",
+    containerSubtitle: payload.containerSubtitle || "",
+  });
 
-  if (result.error && result.error.message?.includes("resource_files")) {
-    result = await supabase
-      .from("learning_modules")
-      .insert({
-        module_name: payload.moduleName,
-        topic_title: payload.topicTitle,
-        resource_file_name: payload.resourceFileName || "",
-        resource_file_data: payload.resourceFileData || "",
-        resource_file_type: payload.resourceFileType || "",
-        type: payload.type || MODULE_TYPE.FREE,
-        price: payload.type === MODULE_TYPE.PAID ? Number(payload.price || 0) : null,
-        status: payload.status || MODULE_STATUS.ACTIVE,
-        container_id: payload.containerId || null,
-        container_title: payload.containerTitle || "",
-        container_subtitle: payload.containerSubtitle || "",
-      })
-      .select(
-        "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
-      )
-      .single();
+  const moduleData = response.module;
+  if (!moduleData) {
+    throw new Error("Unable to create module.");
   }
 
-  if (result.error) throw result.error;
-  return mapModuleRowToModel(result.data);
+  return mapModuleRowToModel({
+    ...moduleData,
+    resource_files: payload.resourceFiles || [],
+  });
 }
 
 async function fetchSharedContainersViaApi() {
