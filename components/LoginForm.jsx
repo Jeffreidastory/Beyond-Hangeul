@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
@@ -13,7 +13,23 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [autoLogin, setAutoLogin] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const supabase = getSupabaseBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        setAutoLogin(true);
+      }
+    };
+
+    void checkSession();
+  }, []);
 
   const onSubmit = async (event) => {
     event.preventDefault();
@@ -104,11 +120,11 @@ export default function LoginForm() {
         disabled={loading}
         className="relative inline-flex h-12 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#f6b21f] px-4 text-xl font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {loading && <span className="absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />}
+        {loading && autoLogin && <span className="absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />}
 
         {!loading && <span className="relative z-10">Sign In</span>}
 
-        {loading && (
+        {loading && autoLogin ? (
           <span className="relative z-10 flex items-center gap-2">
             <span>Logging in</span>
             <span className="flex items-center gap-[3px]">
@@ -117,7 +133,9 @@ export default function LoginForm() {
               <span className="h-[5px] w-[5px] rounded-full bg-[#07223a] animate-bounce [animation-delay:300ms]" />
             </span>
           </span>
-        )}
+        ) : loading ? (
+          <span className="relative z-10">Signing In...</span>
+        ) : null}
       </button>
 
       <p className="pt-3 text-center text-base text-white/85">
