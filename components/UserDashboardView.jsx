@@ -1316,15 +1316,28 @@ export default function UserDashboardView({
             className={`rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}
           >
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 {selectedWorksheet ? (
                   <>
-                    <h2 className="text-xl font-bold">
-                      {selectedWorksheet.title}
-                    </h2>
-                    <p className="text-sm uppercase tracking-[0.35em] text-amber-300">
-                      Writing Practice
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedWorksheetId("");
+                        setTab("worksheets");
+                      }}
+                      aria-label="Back to worksheets"
+                      className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl border text-lg transition ${isLight ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-100" : "border-white/15 bg-[#0f1d32] hover:bg-white/10 text-slate-200"}`}
+                    >
+                      <ChevronLeft size={22} />
+                    </button>
+                    <div>
+                      <h2 className="text-xl font-bold">
+                        {selectedWorksheet.title}
+                      </h2>
+                      <p className="text-sm uppercase tracking-[0.35em] text-amber-300">
+                        Writing Practice
+                      </p>
+                    </div>
                   </>
                 ) : (
                   <>
@@ -1340,18 +1353,18 @@ export default function UserDashboardView({
 
               {selectedWorksheet ? (
                 <div className="flex flex-wrap items-center justify-end gap-3">
-                  <div className="inline-flex flex-wrap items-center gap-2 rounded-3xl border border-white/10 bg-[#0f1d32] px-3 py-2 text-sm text-slate-200">
+                  <div className={`inline-flex flex-wrap items-center gap-2 rounded-3xl border px-3 py-2 text-sm transition ${isLight ? "border-slate-200 bg-slate-100 text-slate-700" : "border-white/10 bg-[#0f1d32] text-slate-200"}`}>
                     <button
                       type="button"
                       onClick={() => setWorksheetMode("writing")}
-                      className={`rounded-full px-3 py-2 text-sm font-semibold transition ${worksheetMode === "writing" ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
+                      className={`rounded-full px-3 py-2 text-sm font-semibold transition ${worksheetMode === "writing" ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-200" : "text-slate-200 hover:bg-white/5"}`}
                     >
                       Writing
                     </button>
                     <button
                       type="button"
                       onClick={() => setWorksheetMode("quiz")}
-                      className={`rounded-full px-3 py-2 text-sm font-semibold transition ${worksheetMode === "quiz" ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
+                      className={`rounded-full px-3 py-2 text-sm font-semibold transition ${worksheetMode === "quiz" ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-200" : "text-slate-200 hover:bg-white/5"}`}
                     >
                       Quiz
                     </button>
@@ -1361,7 +1374,7 @@ export default function UserDashboardView({
                         target="_blank"
                         rel="noreferrer"
                         title="Download Worksheet"
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0f1d32] text-slate-200 transition hover:bg-white/5"
+                        className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${isLight ? "border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200" : "border-white/10 bg-[#0f1d32] text-slate-200 hover:bg-white/5"}`}
                       >
                         <svg
                           viewBox="0 0 24 24"
@@ -1380,17 +1393,6 @@ export default function UserDashboardView({
                       </a>
                     ) : null}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedWorksheetId("");
-                      setTab("worksheets");
-                    }}
-                    aria-label="Back to worksheets"
-                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-slate-200 transition ${isLight ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-100" : "border-white/15 bg-[#0f1d32] hover:bg-white/10"}`}
-                  >
-                    <ChevronLeft size={18} />
-                  </button>
                 </div>
               ) : null}
             </div>
@@ -1533,7 +1535,7 @@ export default function UserDashboardView({
                             {sheetLocked
                               ? "Unlock Premium"
                               : hasStarted
-                                ? "Try Again"
+                                ? "Continue"
                                 : "Open Worksheet"}
                           </button>
                         )}

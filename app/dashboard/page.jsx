@@ -7,14 +7,24 @@ export const dynamic = "force-dynamic";
 async function loadInitialLearningData(userId) {
   const supabase = await createClient();
 
-  const [modulesResult, accessResult, paymentsResult, containersResult, worksheetProgressResult, moduleProgressResult] =
+  let modulesResult = await supabase
+    .from("learning_modules")
+    .select(
+      "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, resource_files, type, price, status, created_at, container_id, container_title, container_subtitle"
+    )
+    .order("created_at", { ascending: true });
+
+  if (modulesResult.error && modulesResult.error.message?.includes("resource_files")) {
+    modulesResult = await supabase
+      .from("learning_modules")
+      .select(
+        "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
+      )
+      .order("created_at", { ascending: true });
+  }
+
+  const [accessResult, paymentsResult, containersResult, worksheetProgressResult, moduleProgressResult] =
     await Promise.all([
-      supabase
-        .from("learning_modules")
-        .select(
-          "id, module_name, topic_title, resource_file_name, resource_file_data, resource_file_type, type, price, status, created_at, container_id, container_title, container_subtitle"
-        )
-        .order("created_at", { ascending: true }),
       supabase
         .from("user_module_access")
         .select("id, user_id, module_id, status, granted_at")
@@ -45,6 +55,7 @@ async function loadInitialLearningData(userId) {
     resourceFileName: row.resource_file_name || "",
     resourceFileData: row.resource_file_data || "",
     resourceFileType: row.resource_file_type || "",
+    resourceFiles: Array.isArray(row.resource_files) ? row.resource_files : row.resource_files ? JSON.parse(row.resource_files || "[]") : [],
     type: row.type || "free",
     price: row.price == null ? null : Number(row.price),
     status: row.status || "active",

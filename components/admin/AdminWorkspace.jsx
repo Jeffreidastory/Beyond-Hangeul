@@ -49,6 +49,7 @@ const defaultModule = {
   resourceFileName: "",
   resourceFileData: "",
   resourceFileType: "",
+  resourceFiles: [],
   type: MODULE_TYPE.FREE,
   status: MODULE_STATUS.ACTIVE,
 };
@@ -137,6 +138,8 @@ export default function AdminWorkspace({
   const canCreateModule = containers.length > 0;
   const [moduleSearch, setModuleSearch] = useState("");
   const [moduleSort, setModuleSort] = useState("newest");
+  const [modulePage, setModulePage] = useState(1);
+  const MODULES_PER_PAGE = 20;
   const [worksheetFilterTab, setWorksheetFilterTab] = useState("all");
   const [worksheetSort, setWorksheetSort] = useState("newest");
   const [moduleActionTarget, setModuleActionTarget] = useState(null);
@@ -421,6 +424,33 @@ export default function AdminWorkspace({
     return Array.from(groups.values()).sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
   }, [modules, containers]);
   const moduleShakeClass = "motion-safe:animate-[field-shake_280ms_ease-in-out]";
+
+  const filteredModules = useMemo(() => {
+    const normalizedSearch = moduleSearch.trim().toLowerCase();
+    return modules
+      .filter((item) => (moduleFilterTab === "all" ? true : item.type === moduleFilterTab))
+      .filter((item) => {
+        if (!normalizedSearch) return true;
+        return [item.moduleName, item.topicTitle, item.resourceFileName].some((value) =>
+          String(value || "").toLowerCase().includes(normalizedSearch)
+        );
+      })
+      .sort((left, right) => {
+        const leftDate = new Date(left.createdAt || 0).getTime();
+        const rightDate = new Date(right.createdAt || 0).getTime();
+        return moduleSort === "oldest" ? leftDate - rightDate : rightDate - leftDate;
+      });
+  }, [modules, moduleFilterTab, moduleSearch, moduleSort]);
+
+  const modulePageCount = Math.max(1, Math.ceil(filteredModules.length / MODULES_PER_PAGE));
+  const pagedModules = useMemo(
+    () => filteredModules.slice((modulePage - 1) * MODULES_PER_PAGE, modulePage * MODULES_PER_PAGE),
+    [filteredModules, modulePage]
+  );
+
+  useEffect(() => {
+    setModulePage(1);
+  }, [moduleFilterTab, moduleSearch, moduleSort]);
 
   const metrics = useMemo(() => {
     const paidModules = modules.filter((item) => item.type === MODULE_TYPE.PAID);
@@ -728,9 +758,14 @@ export default function AdminWorkspace({
     if (isEdit) {
       setEditingModule((prev) => ({
         ...prev,
-        resourceFileName: file.name,
-        resourceFileType: file.type,
-        resourceFileData: uploadedFileUrl,
+        resourceFiles: [
+          ...(Array.isArray(prev.resourceFiles) ? prev.resourceFiles : []),
+          {
+            fileName: file.name,
+            fileType: file.type || "application/octet-stream",
+            fileData: uploadedFileUrl,
+          },
+        ],
       }));
       setStatusMessage("Module file uploaded to storage.");
       setIsEditFileUploading(false);
@@ -742,6 +777,14 @@ export default function AdminWorkspace({
       resourceFileName: file.name,
       resourceFileType: file.type,
       resourceFileData: uploadedFileUrl,
+      resourceFiles: [
+        ...(Array.isArray(prev.resourceFiles) ? prev.resourceFiles : []),
+        {
+          fileName: file.name,
+          fileType: file.type || "application/octet-stream",
+          fileData: uploadedFileUrl,
+        },
+      ],
     }));
     setModuleFieldErrors((prev) => ({ ...prev, resourceFile: false }));
     setStatusMessage("Module file uploaded to storage.");
@@ -757,8 +800,20 @@ export default function AdminWorkspace({
       setStatusMessage("Module set to inactive while editing.");
     }
 
+    const resourceFiles = Array.isArray(module.resourceFiles)
+      ? module.resourceFiles
+      : module.resourceFileData
+      ? [
+          {
+            fileName: module.resourceFileName || "",
+            fileType: module.resourceFileType || "",
+            fileData: module.resourceFileData,
+          },
+        ]
+      : [];
+
     setAutoReactivateAfterEdit(true);
-    setEditingModule({ ...module, status: MODULE_STATUS.DRAFT });
+    setEditingModule({ ...module, status: MODULE_STATUS.DRAFT, resourceFiles });
   };
 
   const saveNewModule = async (event) => {
@@ -766,7 +821,7 @@ export default function AdminWorkspace({
     const moduleName = moduleForm.moduleName.trim();
     const topicTitle = moduleForm.topicTitle.trim();
     const hasValidFile = Boolean(
-      moduleForm.resourceFileName && moduleForm.resourceFileType && moduleForm.resourceFileData
+      Array.isArray(moduleForm.resourceFiles) && moduleForm.resourceFiles.length > 0
     );
 
     const nextErrors = {
@@ -802,7 +857,7 @@ export default function AdminWorkspace({
       setModuleForm(defaultModule);
       setIsCreateModuleModalOpen(false);
       setStatusMessage("Module created.");
-      await refreshAll();
+      await refreshAll(true);
     } catch (error) {
       setStatusMessage(error?.message || "Unable to create module. Please try again.");
     }
@@ -812,53 +867,29 @@ export default function AdminWorkspace({
     if (!editingModule) return;
     setIsSavingEditedModule(true);
 
-    const existingModule = modules.find((module) => module.id === editingModule.id);
     const moduleName = editingModule.moduleName.trim();
     const topicTitle = editingModule.topicTitle.trim();
-    const hasValidFile = Boolean(
-      editingModule.resourceFileName && editingModule.resourceFileType && editingModule.resourceFileData
-    );
+    const resourceFiles = Array.isArray(editingModule.resourceFiles)
+      ? editingModule.resourceFiles
+      : [];
 
-    if (!moduleName || !topicTitle || !hasValidFile) {
-      setStatusMessage("Edit requires Module Name, Title/Topic, and file.");
+    if (!moduleName || !topicTitle || resourceFiles.length === 0) {
+      setStatusMessage("Edit requires Module Name, Title/Topic, and at least one attached file.");
       setIsSavingEditedModule(false);
       return;
     }
 
-    const oldFileUrl = existingModule?.resourceFileData || "";
-    const currentFileUrl = editingModule.resourceFileData || existingModule?.resourceFileData || "";
-    const currentFileName = editingModule.resourceFileName || existingModule?.resourceFileName || "";
-    const currentFileType = editingModule.resourceFileType || existingModule?.resourceFileType || "";
-    const shouldDeleteOldFile = Boolean(oldFileUrl) && oldFileUrl !== currentFileUrl;
-    const oldStoragePath = getStoragePathFromPublicUrl(oldFileUrl);
-    const isSharedFile = modules.some((module) => {
-      if (module.id === editingModule.id) return false;
-      const modulePath = getStoragePathFromPublicUrl(module.resourceFileData || "");
-      return modulePath && modulePath === oldStoragePath;
-    });
-
     try {
-      if (shouldDeleteOldFile && !isSharedFile) {
-        try {
-          await deleteModuleFileFromStorage(oldFileUrl);
-        } catch (error) {
-          setStatusMessage(error.message || "Unable to remove old file from storage.");
-          return;
-        }
-      }
-
       await updateModuleShared(editingModule.id, {
         moduleName,
         topicTitle,
-        resourceFileName: currentFileName,
-        resourceFileType: currentFileType,
-        resourceFileData: currentFileUrl,
+        resourceFiles,
         type: editingModule.type,
         price: null,
         status: autoReactivateAfterEdit ? MODULE_STATUS.ACTIVE : editingModule.status || MODULE_STATUS.DRAFT,
       });
 
-      await refreshAll();
+      await refreshAll(true);
       setEditingModule(null);
       setStatusMessage(
         autoReactivateAfterEdit
@@ -1184,7 +1215,7 @@ export default function AdminWorkspace({
                     </td>
                   </tr>
                 ) : (
-                  filteredModules.map((module) => {
+                  pagedModules.map((module) => {
                     const isPaid = module.type === MODULE_TYPE.PAID;
                     const rowStatus = module.status || MODULE_STATUS.ACTIVE;
 
@@ -1235,6 +1266,35 @@ export default function AdminWorkspace({
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-slate-400">
+              Showing {Math.min(pagedModules.length, filteredModules.length)} of {filteredModules.length} modules
+            </div>
+            {modulePageCount > 1 ? (
+              <div className="flex items-center gap-2 text-sm">
+                <button
+                  type="button"
+                  onClick={() => setModulePage((page) => Math.max(1, page - 1))}
+                  disabled={modulePage === 1}
+                  className="rounded-lg border border-white/10 bg-[#13243d] px-3 py-2 text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {modulePage} of {modulePageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setModulePage((page) => Math.min(modulePageCount, page + 1))}
+                  disabled={modulePage === modulePageCount}
+                  className="rounded-lg border border-white/10 bg-[#13243d] px-3 py-2 text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
           </div>
         </SectionCard>
       </div>
@@ -1609,7 +1669,7 @@ export default function AdminWorkspace({
 
       {isCreateModuleModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <form onSubmit={saveNewModule} noValidate className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+          <form onSubmit={saveNewModule} noValidate className="w-full max-w-3xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
             <h3 className="text-lg font-semibold">Create Module</h3>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div
@@ -1665,8 +1725,9 @@ export default function AdminWorkspace({
                 className={`relative md:col-span-2 ${moduleFieldErrors.topicTitle ? moduleShakeClass : ""}`}
               >
                 <span className="pointer-events-none absolute right-3 top-2 text-sm font-semibold text-rose-400">*</span>
-                <input
+                <textarea
                   required
+                  rows={4}
                   placeholder="Open Module Title / Topic"
                   value={moduleForm.topicTitle}
                   onChange={(event) => {
@@ -1680,6 +1741,9 @@ export default function AdminWorkspace({
                     moduleFieldErrors.topicTitle ? "border-rose-400" : "border-white/20"
                   }`}
                 />
+                <p className="mt-2 text-xs text-slate-400">
+                  Use multiple lines for topic details, such as bullet points or section highlights.
+                </p>
               </div>
 
               <select
@@ -1693,26 +1757,41 @@ export default function AdminWorkspace({
 
               <label
                 key={`create-file-${moduleFieldErrors.resourceFile ? moduleValidationAttempt : 0}`}
-                className={`relative md:col-span-2 flex cursor-pointer items-center justify-center rounded-xl border border-dashed bg-[#13243d] px-3 py-2 text-sm text-slate-300 hover:border-amber-400 ${
+                className={`relative md:col-span-2 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed bg-[#13243d] px-3 py-3 text-sm text-slate-300 hover:border-amber-400 ${
                   moduleFieldErrors.resourceFile ? `border-rose-400 ${moduleShakeClass}` : "border-white/30"
                 }`}
               >
-                <span className="pointer-events-none absolute right-3 top-2 text-sm font-semibold text-rose-400">*</span>
-                Upload Module File (PDF, DOC, DOCX)
+                <div className="text-center font-semibold">Upload Module Files</div>
+                <div className="mt-1 text-xs text-slate-400">
+                  Select one or more PDF, DOC, or DOCX files.
+                </div>
                 <input
                   type="file"
+                  multiple
                   accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   className="hidden"
                   disabled={isCreateFileUploading}
-                  onChange={(event) => handleModuleFileUpload(event.target.files?.[0])}
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files || []);
+                    files.forEach((file) => handleModuleFileUpload(file));
+                  }}
                 />
               </label>
               {isCreateFileUploading ? (
-                <p className="md:col-span-2 text-xs text-amber-300">Uploading file, please wait...</p>
+                <p className="md:col-span-2 text-xs text-amber-300">Uploading files, please wait...</p>
               ) : null}
-              {moduleForm.resourceFileName && (
-                <p className="md:col-span-2 text-xs text-emerald-300">Attached file: {moduleForm.resourceFileName}</p>
-              )}
+              {Array.isArray(moduleForm.resourceFiles) && moduleForm.resourceFiles.length > 0 ? (
+                <div className="md:col-span-2 rounded-lg border border-white/10 bg-[#0f1d32] px-3 py-2 text-xs text-emerald-300">
+                  <div className="font-semibold">Attached files</div>
+                  <div className="mt-2 space-y-1">
+                    {moduleForm.resourceFiles.map((file, idx) => (
+                      <div key={`${file.fileName || "file"}-${idx}`} className="truncate">
+                        {file.fileName || `File ${idx + 1}`}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {statusMessage ? (
                 <p className="md:col-span-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                   {statusMessage}
@@ -1996,7 +2075,7 @@ export default function AdminWorkspace({
 
       {editingModule && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+          <div className="w-full max-w-3xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
             <h3 className="text-lg font-semibold">Edit Module</h3>
             <p className="mt-1 text-xs text-amber-300">Module is currently inactive for safe editing.</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -2028,11 +2107,18 @@ export default function AdminWorkspace({
                   </label>
                 </div>
               </div>
-              <input
-                value={editingModule.topicTitle}
-                onChange={(event) => setEditingModule((prev) => ({ ...prev, topicTitle: event.target.value }))}
-                className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
-              />
+              <div className="md:col-span-2">
+                <textarea
+                  rows={4}
+                  value={editingModule.topicTitle}
+                  onChange={(event) => setEditingModule((prev) => ({ ...prev, topicTitle: event.target.value }))}
+                  className="w-full rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+                  placeholder="Open Module Title / Topic\n• History and Logic of the Korean Alphabet\n• Basic Vowels and Consonants\n• Syllable Block Construction"
+                />
+                <p className="mt-2 text-xs text-slate-400">
+                  Enter the topic/title as multiline text to describe module sections or lessons.
+                </p>
+              </div>
 
               <select
                 value={editingModule.status || MODULE_STATUS.ACTIVE}
@@ -2052,8 +2138,11 @@ export default function AdminWorkspace({
                 Auto activate after save
               </label>
 
-              <label className="md:col-span-2 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-white/30 bg-[#13243d] px-3 py-2 text-sm text-slate-300 hover:border-amber-400">
-                Replace Module File (PDF, DOC, DOCX)
+              <label className="md:col-span-2 flex cursor-pointer flex-col rounded-xl border border-dashed border-white/30 bg-[#13243d] px-3 py-3 text-sm text-slate-200 hover:border-amber-400">
+                <span className="font-semibold">Add another module file</span>
+                <span className="mt-1 text-xs text-slate-400">
+                  Upload a new PDF, DOC, or DOCX file to add to the module. Existing uploaded files remain attached.
+                </span>
                 <input
                   type="file"
                   accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -2063,11 +2152,20 @@ export default function AdminWorkspace({
                 />
               </label>
               {isEditFileUploading ? (
-                <p className="md:col-span-2 text-xs text-amber-300">Uploading replacement file, please wait...</p>
+                <p className="md:col-span-2 text-xs text-amber-300">Uploading additional file, please wait...</p>
               ) : null}
-              {editingModule.resourceFileName && (
-                <p className="text-xs text-emerald-300">Attached file: {editingModule.resourceFileName}</p>
-              )}
+              {Array.isArray(editingModule.resourceFiles) && editingModule.resourceFiles.length > 0 ? (
+                <div className="md:col-span-2 mt-1 rounded-lg border border-white/10 bg-[#0f1d32] px-3 py-2 text-xs text-emerald-300">
+                  <span className="block font-semibold">Attached files</span>
+                  <div className="mt-2 space-y-1">
+                    {editingModule.resourceFiles.map((file, index) => (
+                      <div key={index} className="truncate">
+                        {file.fileName || `File ${index + 1}`}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {statusMessage ? (
                 <p className="md:col-span-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                   {statusMessage}

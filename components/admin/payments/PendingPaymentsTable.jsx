@@ -1,8 +1,11 @@
 import { PAYMENT_STATUS } from "@/types/dashboardModels";
+import { useTheme } from "@/components/theme/ThemeProvider";
 
 export default function PendingPaymentsTable({ pendingRows = [], onViewProof, onApprove }) {
+  const { isLight } = useTheme();
+
   return (
-    <section className="rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+    <section className={`rounded-2xl border p-5 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-white">Pending Payments</h3>
@@ -13,9 +16,9 @@ export default function PendingPaymentsTable({ pendingRows = [], onViewProof, on
         </span>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-white/10">
+      <div className={`overflow-x-auto rounded-xl border ${isLight ? "border-slate-200" : "border-white/10"}`}>
         <table className="w-full min-w-170 text-sm">
-          <thead className="bg-[#13243d] text-slate-300">
+          <thead className={`${isLight ? "bg-slate-100 text-slate-900" : "bg-[#13243d] text-slate-300"}`}>
             <tr>
               <th className="px-3 py-2 text-left">User Name</th>
               <th className="px-3 py-2 text-left">Module Name</th>
@@ -25,8 +28,8 @@ export default function PendingPaymentsTable({ pendingRows = [], onViewProof, on
           </thead>
           <tbody>
             {pendingRows.length === 0 ? (
-              <tr className="border-t border-white/10 bg-[#0f1d32]">
-                <td className="px-3 py-6 text-center text-slate-400" colSpan={4}>
+              <tr className={`${isLight ? "border-t border-slate-200 bg-white" : "border-t border-white/10 bg-[#0f1d32]"}`}>
+                <td className={`px-3 py-6 text-center ${isLight ? "text-slate-500" : "text-slate-400"}`} colSpan={4}>
                   No pending payments.
                 </td>
               </tr>

@@ -1,3 +1,4 @@
+import { useTheme } from "@/components/theme/ThemeProvider";
 import AuthNavbar from "@/components/AuthNavbar";
 import Image from "next/image";
 import RegisterForm from "@/components/RegisterForm";
@@ -6,8 +7,12 @@ import BHLogo from "@/app/images/BH-logo.png";
 export const dynamic = "force-dynamic";
 
 export default function RegisterPage() {
+  const { isLight } = useTheme();
+  const pageBg = isLight ? "bg-[#eef3ff] text-slate-900" : "bg-[#031425] text-white";
+  const panelBg = isLight ? "border-slate-200 bg-white/95" : "border-white/20 bg-[#0a1e35]/80";
+
   return (
-    <section className="fade-rise relative left-1/2 right-1/2 -mx-[50vw] min-h-[calc(100vh-73px)] w-screen overflow-hidden text-white pt-20">
+    <section className={`fade-rise relative left-1/2 right-1/2 -mx-[50vw] min-h-[calc(100vh-73px)] w-screen overflow-hidden ${pageBg} pt-20`}>
       <style>{`
         body > main {
           padding-top: 0 !important;
@@ -34,13 +39,13 @@ export default function RegisterPage() {
       </div>
 
       <div className="relative mx-auto flex w-full max-w-7xl items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
-        <div className="w-full max-w-lg rounded-3xl border border-white/20 bg-[#0a1e35]/80 p-4 shadow-2xl backdrop-blur-sm sm:p-6">
+        <div className={`w-full max-w-lg rounded-3xl border p-4 shadow-2xl backdrop-blur-sm sm:p-6 ${panelBg}`}>
           <div className="mx-auto mb-2 w-fit">
             <Image src={BHLogo} alt="Beyond Hangeul logo" width={84} height={84} className="object-contain" />
           </div>
           <div className="mb-3 text-center">
-            <p className="text-2xl font-semibold text-white font-headline">Create Account</p>
-            <p className="mt-1 text-sm text-white/70">Start your journey with Beyond Hangeul.</p>
+            <p className={`text-2xl font-semibold ${isLight ? "text-slate-900" : "text-white"} font-headline`}>Create Account</p>
+            <p className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-white/70"}`}>Start your journey with Beyond Hangeul.</p>
           </div>
           <RegisterForm />
         </div>

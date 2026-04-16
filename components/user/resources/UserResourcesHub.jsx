@@ -10,7 +10,7 @@ import ResourcesReferencesTab from "@/components/user/resources/ResourcesReferen
 const tabItems = [
   { key: "files", label: "Files", icon: FileStack },
   { key: "notes", label: "Notes", icon: NotebookPen },
-  { key: "bookmarks", label: "Bookmarks", icon: Star },
+  { key: "bookmarks", label: "Saved", icon: Star },
   { key: "references", label: "References", icon: Sparkles },
 ];
 

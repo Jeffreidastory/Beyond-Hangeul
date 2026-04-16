@@ -478,22 +478,22 @@ export default function WorksheetPracticePanel({
       {mode === "writing" ? (
         <div className="space-y-5 max-w-6xl mx-auto">
           <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-            <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-6 text-center">
+            <div className={`rounded-4xl border p-6 text-center ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
               <div className="text-[5rem] font-black leading-none text-amber-300 sm:text-[6rem]">{currentLetter || "ㄱ"}</div>
-              <p className="mt-3 text-sm text-slate-300">Sound: {currentSound || "—"}</p>
+              <p className={`mt-3 text-sm ${isLight ? "text-slate-700" : "text-slate-300"}`}>Sound: {currentSound || "—"}</p>
             </div>
 
-            <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-5">
+            <div className={`rounded-4xl border p-5 ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Answer</p>
-                    <p className="mt-2 text-xl font-semibold text-white">Write the letter</p>
+                    <p className={`mt-2 text-xl font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>Write the letter</p>
                   </div>
                   <button
                     type="button"
                     onClick={restartWorksheet}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-400 bg-[#0f172c] text-amber-300 transition hover:border-amber-300 hover:text-amber-100"
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-400 transition ${isLight ? "bg-slate-100 text-slate-900 hover:border-slate-300 hover:text-slate-900" : "bg-[#0f172c] text-amber-300 hover:border-amber-300 hover:text-amber-100"}`}
                     aria-label="Restart worksheet"
                   >
                     ↻
@@ -512,7 +512,7 @@ export default function WorksheetPracticePanel({
                         setWritingSequences((prev) => ({ ...prev, [currentStepIndex]: nextSeq }));
                         setWritingResults((prev) => ({ ...prev, [currentStepIndex]: undefined }));
                       }}
-                      className={`w-full rounded-3xl border px-4 py-3 pr-12 text-2xl font-semibold text-white outline-none transition ${inputBorderClass}`}
+                      className={`w-full rounded-3xl border px-4 py-3 pr-12 text-2xl font-semibold outline-none transition ${inputBorderClass} ${isLight ? "text-slate-900 bg-transparent" : "text-white bg-[#0f172c]"}`}
                     />
                     {currentAnswerIsCorrect ? (
                       <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-emerald-400">
@@ -549,8 +549,8 @@ export default function WorksheetPracticePanel({
             </div>
           </div>
 
-          <div className="rounded-4xl border border-white/10 bg-[#0f172c] p-5">
-            <div className="mb-3 text-xs uppercase tracking-[0.3em] text-slate-400">Korean Keyboard</div>
+          <div className={`rounded-4xl border p-5 ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
+            <div className={`mb-3 text-xs uppercase tracking-[0.3em] ${isLight ? "text-slate-500" : "text-slate-400"}`}>Korean Keyboard</div>
             <div className="space-y-2">
               {KEYBOARD_ROWS.map((row, rowIndex) => (
                 <div key={rowIndex} className={`grid gap-2 ${rowIndex === 0 ? "grid-cols-10" : rowIndex === 1 ? "grid-cols-9" : "grid-cols-7"}`}>
@@ -581,9 +581,9 @@ export default function WorksheetPracticePanel({
             </div>
           </div>
 
-          <div className="mt-3 rounded-3xl border border-white/10 bg-[#0f172c] px-4 py-2 text-sm text-slate-300 shadow-sm">
+          <div className={`mt-3 rounded-3xl border px-4 py-2 text-sm shadow-sm ${isLight ? "border-slate-200 bg-white/90 text-slate-700" : "border-white/10 bg-[#0f172c] text-slate-300"}`}>
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <span className="font-semibold text-white">{writingCompletedCount}/{entries.length} correct</span>
+              <span className={`${isLight ? "font-semibold text-slate-900" : "font-semibold text-white"}`}>{writingCompletedCount}/{entries.length} correct</span>
               <span>Step {currentStepDisplay} of {totalSteps}</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">

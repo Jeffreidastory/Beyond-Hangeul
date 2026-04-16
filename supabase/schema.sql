@@ -214,6 +214,7 @@ create table if not exists public.learning_modules (
   resource_file_name text not null default '',
   resource_file_data text not null default '',
   resource_file_type text not null default '',
+  resource_files jsonb not null default '[]'::jsonb,
   type text not null default 'free' check (type in ('free', 'paid')),
   price numeric,
   status text not null default 'active' check (status in ('active', 'draft')),
@@ -227,6 +228,7 @@ create table if not exists public.learning_modules (
 alter table public.learning_modules add column if not exists container_id uuid references public.learning_containers(id) on delete set null;
 alter table public.learning_modules add column if not exists container_title text not null default '';
 alter table public.learning_modules add column if not exists container_subtitle text not null default '';
+alter table public.learning_modules add column if not exists resource_files jsonb not null default '[]'::jsonb;
 
 create table if not exists public.learning_containers (
   id uuid primary key default gen_random_uuid(),
