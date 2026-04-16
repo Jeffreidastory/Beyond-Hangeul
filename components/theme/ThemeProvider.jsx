@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, useState } from "react";
 
 const defaultThemeContext = {
   themeMode: "dark",
@@ -32,14 +32,18 @@ export function ThemeProvider({ children }) {
   const [themeMode, setThemeMode] = useState("dark");
   const [fontSize, setFontSize] = useState(100);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
     const storedTheme = normalizeTheme(window.localStorage.getItem(THEME_STORAGE_KEY));
+    const preferredTheme =
+      storedTheme ||
+      (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
     const storedFont = normalizeFontSize(window.localStorage.getItem(FONT_SIZE_STORAGE_KEY));
 
-    setThemeMode(storedTheme);
+    setThemeMode(preferredTheme);
     setFontSize(storedFont);
+    document.documentElement.setAttribute("data-profile-theme", preferredTheme);
   }, []);
 
   useEffect(() => {

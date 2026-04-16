@@ -30,7 +30,6 @@ export default function RootLayout({ children }) {
     <html
       lang="en"
       className={`${inter.variable} ${poppins.variable} ${montserrat.variable}`}
-      data-profile-theme="dark"
       data-scroll-behavior="smooth"
       style={{ fontSize: "100%" }}
       suppressHydrationWarning
