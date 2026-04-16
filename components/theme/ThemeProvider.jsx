@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useLayoutEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 const defaultThemeContext = {
   themeMode: "dark",
