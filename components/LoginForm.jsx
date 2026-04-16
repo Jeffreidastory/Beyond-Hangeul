@@ -23,15 +23,13 @@ export default function LoginForm() {
     const supabase = getSupabaseBrowserClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
-    setLoading(false);
-
     if (signInError) {
       setError(signInError.message);
+      setLoading(false);
       return;
     }
 
-    router.push("/dashboard");
-    router.refresh();
+    await router.push("/dashboard");
   };
 
   return (
@@ -104,9 +102,22 @@ export default function LoginForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-2xl bg-[#f6b21f] px-4 py-3 text-2xl font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-not-allowed disabled:opacity-70"
+        className="relative inline-flex h-12 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#f6b21f] px-4 text-xl font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {loading ? "Signing In..." : "Sign In"}
+        {loading && <span className="absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />}
+
+        {!loading && <span className="relative z-10">Sign In</span>}
+
+        {loading && (
+          <span className="relative z-10 flex items-center gap-2">
+            <span>Logging in</span>
+            <span className="flex items-center gap-[3px]">
+              <span className="h-[5px] w-[5px] rounded-full bg-[#07223a] animate-bounce [animation-delay:0ms]" />
+              <span className="h-[5px] w-[5px] rounded-full bg-[#07223a] animate-bounce [animation-delay:150ms]" />
+              <span className="h-[5px] w-[5px] rounded-full bg-[#07223a] animate-bounce [animation-delay:300ms]" />
+            </span>
+          </span>
+        )}
       </button>
 
       <p className="pt-3 text-center text-base text-white/85">
