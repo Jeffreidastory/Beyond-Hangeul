@@ -50,7 +50,7 @@ export default function ConnectInquiryForm() {
         required
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="w-full rounded-xl border border-amber-400/45 bg-[#111114] px-4 py-3 text-sm text-white placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(255,191,0,0.18)]"
+        className="box-border w-full min-h-[48px] rounded-xl border border-amber-400/45 bg-[#111114] px-4 py-3 text-base text-white placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(255,191,0,0.18)]"
       />
 
       <input
@@ -59,14 +59,14 @@ export default function ConnectInquiryForm() {
         required
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="w-full rounded-xl border border-amber-400/45 bg-[#111114] px-4 py-3 text-sm text-white placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(255,191,0,0.18)]"
+        className="box-border w-full min-h-[48px] rounded-xl border border-amber-400/45 bg-[#111114] px-4 py-3 text-base text-white placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(255,191,0,0.18)]"
       />
 
       <select
         required
         value={subject}
         onChange={(e) => setSubject(e.target.value)}
-        className="w-full rounded-xl border border-amber-400/45 bg-[#111114] px-4 py-3 text-sm text-white outline-none transition focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(255,191,0,0.18)]"
+        className="box-border w-full min-h-[48px] rounded-xl border border-amber-400/45 bg-[#111114] px-4 py-3 text-base text-white outline-none transition focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(255,191,0,0.18)]"
       >
         <option value="" disabled>
           Subject
@@ -77,11 +77,11 @@ export default function ConnectInquiryForm() {
 
       <textarea
         placeholder="Message"
-        rows={5}
+        rows={4}
         required
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        className="w-full rounded-xl border border-amber-400/45 bg-[#111114] px-4 py-3 text-sm text-white placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(255,191,0,0.18)]"
+        className="box-border w-full min-h-[140px] rounded-xl border border-amber-400/45 bg-[#111114] px-4 py-3 text-base text-white placeholder:text-slate-400 outline-none transition focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(255,191,0,0.18)]"
       />
 
       {error && <p className="rounded-lg bg-red-500/20 px-3 py-2 text-sm text-red-100">{error}</p>}
@@ -90,7 +90,7 @@ export default function ConnectInquiryForm() {
       <button
         type="submit"
         disabled={loading}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFBF00] px-4 py-3 text-sm font-bold tracking-wide text-black transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+        className="box-border inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFBF00] px-4 py-3.5 text-base font-bold tracking-wide text-black transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
       >
         <FaPaperPlane size={14} />
         {loading ? "SENDING..." : "SEND MESSAGE"}

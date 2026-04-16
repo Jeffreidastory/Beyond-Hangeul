@@ -6,7 +6,7 @@ import { FaEnvelope, FaFacebookF, FaTiktok } from "react-icons/fa";
 
 export default function LandingPage() {
   return (
-    <section className="relative left-1/2 right-1/2 -mx-[50vw] min-h-screen w-screen overflow-hidden pt-20 text-white">
+    <section className="relative left-1/2 right-1/2 -mx-[50vw] min-h-screen w-screen overflow-hidden bg-[#05111f] pt-20 text-white">
       <style>{`
         header[data-global-navbar="true"] {
           display: none;
@@ -14,6 +14,7 @@ export default function LandingPage() {
 
         body > main {
           padding-top: 0 !important;
+          padding-bottom: 0 !important;
           max-width: 100% !important;
           padding-left: 0 !important;
           padding-right: 0 !important;
@@ -209,64 +210,78 @@ export default function LandingPage() {
 
       <div className="relative h-px w-full bg-white/20" />
 
-      <section id="contact" data-scroll-section className="fade-rise relative mx-auto mt-14 w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8 2xl:max-w-[92rem]">
-        <div className="rounded-3xl border border-white/20 bg-[#071629]/70 p-6 shadow-[0_18px_45px_rgba(0,0,0,0.4)] backdrop-blur-sm sm:p-10">
-          <h2 className="text-4xl font-bold text-[#FFBF00] [font-family:var(--font-headline)]">Start the Conversation.</h2>
-          <p className="mt-4 max-w-5xl text-lg leading-8 text-slate-200">
+      <section id="contact" data-scroll-section className="fade-rise relative mx-auto mt-14 w-full max-w-7xl px-4 pb-20 sm:px-6 lg:px-8 2xl:max-w-[92rem]">
+        <div className="rounded-3xl border border-white/20 bg-[#071629]/70 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.4)] backdrop-blur-sm sm:p-8">
+          <h2 className="text-3xl font-bold text-[#FFBF00] [font-family:var(--font-headline)] sm:text-4xl">
+            Start the Conversation.
+          </h2>
+          <p className="mt-4 max-w-3xl text-base leading-relaxed text-slate-200 sm:text-lg">
             &quot;Whether you have a business inquiry, a technical question, or feedback on our curated lessons, our
             doors are open.&quot;
           </p>
 
-          <div className="my-10 h-px w-full bg-white/15" />
+          <div className="my-8 h-px w-full bg-white/15" />
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <article className="rounded-2xl border border-white/15 bg-[#0c213a]/70 p-6">
-              <h3 className="text-2xl font-bold text-white [font-family:var(--font-headline)]">Direct Channels</h3>
-
-              <div className="mt-5 space-y-4 text-sm leading-7 text-slate-200">
-                <div className="rounded-xl border border-white/15 bg-[#1A1A1C] p-4">
-                  <p className="font-semibold text-amber-300">General Inquiries</p>
-                  <a
-                    href="mailto:jffrsnfeliciano0000@gmail.com"
-                    className="mt-2 inline-flex items-center gap-2 text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
-                  >
-                    <FaEnvelope size={14} />
-                    jffrsnfeliciano0000@gmail.com
-                  </a>
+            <div className="space-y-5 min-w-0">
+              <article className="w-full max-w-full min-w-0 rounded-2xl border border-white/15 bg-[#0c213a]/70 p-5 sm:p-6">
+                <h3 className="text-2xl font-bold text-white [font-family:var(--font-headline)]">
+                  Direct Channels
+                </h3>
+                <div className="mt-5 space-y-4 text-sm leading-7 text-slate-200">
+                  <div className="w-full max-w-full min-w-0 rounded-2xl border border-white/10 bg-[#0f1725]/70 p-4">
+                    <p className="font-semibold text-amber-300">General Inquiries</p>
+                    <a
+                      href="mailto:jffrsnfeliciano0000@gmail.com"
+                      className="mt-2 flex flex-wrap w-full items-center gap-2 break-words text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
+                    >
+                      <FaEnvelope size={14} />
+                      jffrsnfeliciano0000@gmail.com
+                    </a>
+                  </div>
                 </div>
+              </article>
 
-                <div>
-                  <p className="font-semibold text-amber-300">Socials:</p>
-                  <ul className="mt-2 space-y-3">
-                    <li className="rounded-xl border border-white/15 bg-[#1A1A1C] p-4">
-                      <a
-                        href="https://www.tiktok.com/@languagecourses1"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
-                      >
-                        <FaTiktok size={14} />
-                        www.tiktok.com/@languagecourses1
-                      </a>
-                    </li>
-                    <li className="rounded-xl border border-white/15 bg-[#1A1A1C] p-4">
-                      <a
-                        href="https://www.facebook.com/share/18j3WAH3Ho/?mibextid=wwXIfr"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
-                      >
-                        <FaFacebookF size={14} />
-                        https://www.facebook.com/share/18j3WAH3Ho/?mibextid=wwXIfr
-                      </a>
-                    </li>
-                  </ul>
+              <article className="w-full max-w-full min-w-0 rounded-2xl border border-white/15 bg-[#0c213a]/70 p-5 sm:p-6">
+                <h3 className="text-2xl font-bold text-white [font-family:var(--font-headline)]">
+                  Socials
+                </h3>
+                <div className="mt-5 space-y-4 text-sm leading-7 text-slate-200">
+                  <div className="w-full max-w-full min-w-0 rounded-2xl border border-white/10 bg-[#0f1725]/70 p-4">
+                    <p className="font-semibold text-amber-300">Connect on socials</p>
+                    <ul className="mt-4 space-y-3">
+                      <li className="w-full max-w-full min-w-0 rounded-xl border border-white/15 bg-[#1A1A1C] p-4">
+                        <a
+                          href="https://www.tiktok.com/@languagecourses1"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex flex-wrap items-center gap-2 break-all text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
+                        >
+                          <FaTiktok size={14} />
+                          www.tiktok.com/@languagecourses1
+                        </a>
+                      </li>
+                      <li className="w-full max-w-full min-w-0 rounded-xl border border-white/15 bg-[#1A1A1C] p-4">
+                        <a
+                          href="https://www.facebook.com/share/18j3WAH3Ho/?mibextid=wwXIfr"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex flex-wrap items-center gap-2 break-all text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
+                        >
+                          <FaFacebookF size={14} />
+                          https://www.facebook.com/share/18j3WAH3Ho/?mibextid=wwXIfr
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            </article>
+              </article>
+            </div>
 
-            <article className="rounded-2xl border border-white/15 bg-[#0c213a]/70 p-6">
-              <h3 className="text-2xl font-bold text-white [font-family:var(--font-headline)]">The Inquiry Form</h3>
+            <article className="w-full max-w-full min-w-0 rounded-2xl border border-white/15 bg-[#0c213a]/70 p-5 sm:p-6">
+              <h3 className="text-2xl font-bold text-white [font-family:var(--font-headline)]">
+                The Inquiry Form
+              </h3>
               <ConnectInquiryForm />
             </article>
           </div>
