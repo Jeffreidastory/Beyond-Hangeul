@@ -1,3 +1,4 @@
+import Script from "next/script";
 import { Inter, Montserrat, Poppins } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
@@ -35,6 +36,26 @@ export default function RootLayout({ children }) {
       suppressHydrationWarning
     >
       <body className="text-foreground [font-family:var(--font-body)]">
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const storedTheme = window.localStorage.getItem("bh-theme-mode");
+                const theme =
+                  storedTheme === "light" || storedTheme === "dark"
+                    ? storedTheme
+                    : window.matchMedia("(prefers-color-scheme: light)").matches
+                    ? "light"
+                    : "dark";
+                document.documentElement.setAttribute("data-profile-theme", theme);
+              } catch (error) {
+                // ignore
+              }
+            `,
+          }}
+        />
         <ThemeProvider>
           <main className="mx-auto w-full max-w-7xl px-4 pb-14 pt-8 sm:px-6 lg:px-8">
             {children}

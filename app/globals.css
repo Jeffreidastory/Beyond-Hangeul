@@ -33,8 +33,63 @@ body {
   min-height: 100vh;
 }
 
-html {
-  scroll-behavior: smooth;
+.hero-learning-card {
+  border-radius: 1rem;
+  border-width: 1px;
+  border-style: solid;
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  transition: background-image 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+:root[data-profile-theme="light"] .hero-learning-card {
+  background-image: linear-gradient(to right, #f1f5f9, #f8fafc, #ffffff);
+  border-color: #e2e8f0;
+  box-shadow: 0 15px 45px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-profile-theme="light"] .hero-learning-card__headline {
+  color: #0f172a;
+}
+
+:root[data-profile-theme="light"] .hero-learning-card__body {
+  color: #475569;
+}
+
+:root[data-profile-theme="light"] .hero-learning-card__streak {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.06);
+}
+
+:root[data-profile-theme="light"] .hero-learning-card__streak .hero-learning-card__streak-value {
+  color: #0f172a;
+}
+
+:root[data-profile-theme="dark"] .hero-learning-card {
+  background-image: linear-gradient(to right, #081424, #112443, #13243d);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-profile-theme="dark"] .hero-learning-card__headline {
+  color: #ffffff;
+}
+
+:root[data-profile-theme="dark"] .hero-learning-card__body {
+  color: #cbd5e1;
+}
+
+:root[data-profile-theme="dark"] .hero-learning-card__streak {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+:root[data-profile-theme="dark"] .hero-learning-card__streak .hero-learning-card__streak-value {
+  color: #ffffff;
 }
 
 [data-scroll-section] {
