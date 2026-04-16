@@ -1,3 +1,4 @@
+import { useTheme } from "@/components/theme/ThemeProvider";
 import StepCard from "@/components/path/StepCard";
 import { PATH_STEP_TYPE } from "@/types/dashboardModels";
 
@@ -20,12 +21,18 @@ export default function StepBuilder({ steps, modules, worksheets, onChangeSteps 
     onChangeSteps(next);
   };
 
+  const { isLight } = useTheme();
+  const panelClass = isLight ? "rounded-2xl border border-slate-200 bg-white p-5" : "rounded-2xl border border-white/10 bg-[#0f1d32] p-5";
+  const textClass = isLight ? "text-slate-900" : "text-white";
+  const mutedClass = isLight ? "text-slate-500" : "text-slate-400";
+  const emptyClass = isLight ? "rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600" : "rounded-xl border border-dashed border-white/20 bg-[#13243d] p-3 text-sm text-slate-400";
+
   return (
-    <section className="rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+    <section className={panelClass}>
       <div className="mb-4 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-lg font-semibold text-white">Step Builder</h3>
-          <p className="text-sm text-slate-400">Create ordered steps for the learning journey.</p>
+          <h3 className={`text-lg font-semibold ${textClass}`}>Step Builder</h3>
+          <p className={`text-sm ${mutedClass}`}>Create ordered steps for the learning journey.</p>
         </div>
         <button
           type="button"
@@ -71,7 +78,7 @@ export default function StepBuilder({ steps, modules, worksheets, onChangeSteps 
         ))}
 
         {steps.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-white/20 bg-[#13243d] p-3 text-sm text-slate-400">
+          <p className={emptyClass}>
             No steps yet. Add your first step.
           </p>
         ) : null}

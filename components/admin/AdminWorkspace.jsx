@@ -87,13 +87,16 @@ function StatusBadge({ children, tone = "slate" }) {
   return <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
 }
 
+import { useTheme } from "@/components/theme/ThemeProvider";
+
 function SectionCard({ title, subtitle, children, action }) {
+  const { isLight } = useTheme();
   return (
-    <section className="rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+    <section className={`rounded-2xl border p-5 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"}`}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-xl font-semibold">{title}</h2>
-          {subtitle && <p className="mt-1 text-sm text-slate-400">{subtitle}</p>}
+          <h2 className={`text-xl font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>{title}</h2>
+          {subtitle && <p className={`mt-1 text-sm ${isLight ? "text-slate-500" : "text-slate-400"}`}>{subtitle}</p>}
         </div>
         {action}
       </div>

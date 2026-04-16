@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "@/components/theme/ThemeProvider";
 import PathHeader from "@/components/path/PathHeader";
 import PathDetailsCard from "@/components/path/PathDetailsCard";
 import StepBuilder from "@/components/path/StepBuilder";
@@ -96,9 +97,15 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
     onSaved?.();
   };
 
+  const { isLight } = useTheme();
+  const sectionClass = isLight ? "rounded-2xl border border-slate-200 bg-white p-5" : "rounded-2xl border border-white/10 bg-[#0f1d32] p-5";
+  const cardClass = isLight ? "rounded-xl border border-slate-200 bg-slate-50 p-3" : "rounded-xl border border-white/10 bg-[#13243d] p-3";
+  const tableHeadClass = isLight ? "bg-slate-100 text-slate-900" : "bg-[#13243d] text-slate-300";
+  const rowClass = isLight ? "border-t border-slate-200 bg-white" : "border-t border-white/10 bg-[#0f1d32]";
+
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+      <section className={sectionClass}>
         <PathHeader
           title="Path Management"
           subtitle="Manage the learning flow shown to all users"
@@ -117,9 +124,9 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
             onChangeSteps={(nextSteps) => setDraft((prev) => ({ ...prev, steps: nextSteps }))}
           />
 
-          <section className="rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
+          <section className={sectionClass}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-slate-400">{stepCountLabel}</p>
+              <p className={isLight ? "text-sm text-slate-600" : "text-sm text-slate-400"}>{stepCountLabel}</p>
               <button
                 type="button"
                 onClick={saveDraft}
@@ -131,13 +138,13 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
             {notice ? <p className="mt-3 text-sm text-emerald-300">{notice}</p> : null}
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-[#0f1d32] p-5">
-            <h3 className="text-lg font-semibold text-white">Saved Paths</h3>
-            <p className="mt-1 text-sm text-slate-400">Scalable list view ready for multiple paths.</p>
+          <section className={sectionClass}>
+            <h3 className={`text-lg font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>Saved Paths</h3>
+            <p className={`mt-1 text-sm ${isLight ? "text-slate-500" : "text-slate-400"}`}>Scalable list view ready for multiple paths.</p>
 
-            <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
+            <div className={`mt-4 overflow-x-auto rounded-xl border ${isLight ? "border-slate-200" : "border-white/10"}`}>
               <table className="w-full min-w-180 text-sm">
-                <thead className="bg-[#13243d] text-slate-300">
+                <thead className={tableHeadClass}>
                   <tr>
                     <th className="px-3 py-2 text-left">Path Name</th>
                     <th className="px-3 py-2 text-left">Step Count</th>
@@ -148,27 +155,27 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
                 </thead>
                 <tbody>
                   {paths.map((path) => (
-                    <tr key={path.id} className="border-t border-white/10 bg-[#0f1d32]">
-                      <td className="px-3 py-2 text-slate-100">{path.title}</td>
-                      <td className="px-3 py-2 text-slate-300">{path.steps?.length || 0}</td>
+                    <tr key={path.id} className={rowClass}>
+                      <td className={isLight ? "px-3 py-2 text-slate-900" : "px-3 py-2 text-slate-100"}>{path.title}</td>
+                      <td className={isLight ? "px-3 py-2 text-slate-700" : "px-3 py-2 text-slate-300"}>{path.steps?.length || 0}</td>
                       <td className="px-3 py-2">
                         <span
                           className={`rounded-full border px-2 py-1 text-xs font-semibold ${
                             path.status === PATH_STATUS.ACTIVE
-                              ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
-                              : "border-slate-500/40 bg-slate-600/10 text-slate-300"
+                              ? isLight ? "border-emerald-300/40 bg-emerald-100 text-emerald-700" : "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
+                              : isLight ? "border-slate-300/40 bg-slate-100 text-slate-700" : "border-slate-500/40 bg-slate-600/10 text-slate-300"
                           }`}
                         >
                           {path.status === PATH_STATUS.ACTIVE ? "Active" : "Draft"}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-slate-300">{new Date(path.updatedAt || path.createdAt || Date.now()).toLocaleDateString()}</td>
+                      <td className={isLight ? "px-3 py-2 text-slate-700" : "px-3 py-2 text-slate-300"}>{new Date(path.updatedAt || path.createdAt || Date.now()).toLocaleDateString()}</td>
                       <td className="px-3 py-2">
                         <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() => editPath(path)}
-                            className="rounded-lg border border-white/20 px-2 py-1 text-xs text-slate-200 hover:bg-white/10"
+                            className={`rounded-lg border px-2 py-1 text-xs ${isLight ? "border-slate-300 text-slate-700 hover:bg-slate-100" : "border-white/20 text-slate-200 hover:bg-white/10"}`}
                           >
                             Edit
                           </button>
@@ -185,8 +192,8 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
                   ))}
 
                   {paths.length === 0 ? (
-                    <tr className="border-t border-white/10 bg-[#0f1d32]">
-                      <td colSpan={5} className="px-3 py-5 text-center text-slate-400">
+                    <tr className={rowClass}>
+                      <td colSpan={5} className={isLight ? "px-3 py-5 text-center text-slate-500" : "px-3 py-5 text-center text-slate-400"}>
                         No paths created yet.
                       </td>
                     </tr>
