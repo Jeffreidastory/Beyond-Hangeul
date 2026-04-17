@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, Upload } from "lucide-react";
 import {
   ADMIN_SECTIONS,
   MODULE_STATUS,
@@ -46,12 +46,21 @@ import { useRealtimeTables } from "@/services/realtime/useRealtimeTables";
 const defaultModule = {
   moduleName: "",
   topicTitle: "",
+  topicTitles: [""],
   resourceFileName: "",
   resourceFileData: "",
   resourceFileType: "",
   resourceFiles: [],
   type: MODULE_TYPE.FREE,
   status: MODULE_STATUS.ACTIVE,
+};
+
+const splitTopicTitles = (topicTitle = "") => {
+  const entries = String(topicTitle)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return entries.length > 0 ? entries : [""];
 };
 
 const createWorksheetRows = (count = 5) =>
@@ -804,11 +813,18 @@ export default function AdminWorkspace({
     if (!module) return;
     setEditingModuleLoadingId(module.id);
 
+    const isCurrentlyActive = (module.status || MODULE_STATUS.ACTIVE) !== MODULE_STATUS.DRAFT;
+    if (isCurrentlyActive) {
+      setModules((prevModules) =>
+        prevModules.map((item) =>
+          item.id === module.id ? { ...item, status: MODULE_STATUS.DRAFT } : item
+        )
+      );
+    }
+
     try {
-      if ((module.status || MODULE_STATUS.ACTIVE) !== MODULE_STATUS.DRAFT) {
+      if (isCurrentlyActive) {
         await updateModuleShared(module.id, { status: MODULE_STATUS.DRAFT });
-        await refreshAll();
-        setStatusMessage("Module set to inactive while editing.");
       }
 
       const resourceFiles = Array.isArray(module.resourceFiles)
@@ -823,8 +839,18 @@ export default function AdminWorkspace({
           ]
         : [];
 
+      const topicTitles = (module.topicTitle || "")
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
       setAutoReactivateAfterEdit(true);
-      setEditingModule({ ...module, status: MODULE_STATUS.DRAFT, resourceFiles });
+      setEditingModule({
+        ...module,
+        status: MODULE_STATUS.DRAFT,
+        resourceFiles,
+        topicTitles: topicTitles.length > 0 ? topicTitles : [""],
+      });
     } finally {
       setEditingModuleLoadingId(null);
     }
@@ -833,14 +859,15 @@ export default function AdminWorkspace({
   const saveNewModule = async (event) => {
     event.preventDefault();
     const moduleName = moduleForm.moduleName.trim();
-    const topicTitle = moduleForm.topicTitle.trim();
+    const topicTitles = (moduleForm.topicTitles || []).map((title) => title.trim()).filter(Boolean);
+    const topicTitle = topicTitles.join("\n");
     const hasValidFile = Boolean(
       Array.isArray(moduleForm.resourceFiles) && moduleForm.resourceFiles.length > 0
     );
 
     const nextErrors = {
       moduleName: !moduleName,
-      topicTitle: !topicTitle,
+      topicTitle: topicTitles.length === 0,
       resourceFile: !hasValidFile,
     };
 
@@ -854,7 +881,7 @@ export default function AdminWorkspace({
       return;
     }
 
-    if (!moduleName || !topicTitle || !hasValidFile) {
+    if (!moduleName || topicTitles.length === 0 || !hasValidFile) {
       setStatusMessage("Please complete all required fields: Module Name, Title/Topic, and upload a PDF/DOC/DOCX file.");
       return;
     }
@@ -882,12 +909,13 @@ export default function AdminWorkspace({
     setIsSavingEditedModule(true);
 
     const moduleName = editingModule.moduleName.trim();
-    const topicTitle = editingModule.topicTitle.trim();
+    const topicTitles = (editingModule.topicTitles || []).map((title) => title.trim()).filter(Boolean);
+    const topicTitle = topicTitles.join("\n");
     const resourceFiles = Array.isArray(editingModule.resourceFiles)
       ? editingModule.resourceFiles
       : [];
 
-    if (!moduleName || !topicTitle || resourceFiles.length === 0) {
+    if (!moduleName || topicTitles.length === 0 || resourceFiles.length === 0) {
       setStatusMessage("Edit requires Module Name, Title/Topic, and at least one attached file.");
       setIsSavingEditedModule(false);
       return;
@@ -1749,24 +1777,61 @@ export default function AdminWorkspace({
                 className={`relative md:col-span-2 ${moduleFieldErrors.topicTitle ? moduleShakeClass : ""}`}
               >
                 <span className="pointer-events-none absolute right-3 top-2 text-sm font-semibold text-rose-400">*</span>
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="Open Module Title / Topic"
-                  value={moduleForm.topicTitle}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setModuleForm((prev) => ({ ...prev, topicTitle: value }));
-                    if (value.trim()) {
-                      setModuleFieldErrors((prev) => ({ ...prev, topicTitle: false }));
-                    }
-                  }}
-                  className={`w-full rounded-xl border bg-[#13243d] px-3 py-2 pr-7 outline-none focus:border-amber-400 ${
-                    moduleFieldErrors.topicTitle ? "border-rose-400" : "border-white/20"
-                  }`}
-                />
+                <div className="space-y-2">
+                  {(moduleForm.topicTitles || [""]).map((topic, index, allTopics) => {
+                    const isLast = index === allTopics.length - 1;
+                    return (
+                      <div key={index} className="flex items-center gap-2">
+                        <input
+                          required={index === 0}
+                          value={topic}
+                          onChange={(event) => {
+                            const nextTopicTitles = [...(moduleForm.topicTitles || [])];
+                            nextTopicTitles[index] = event.target.value;
+                            setModuleForm((prev) => ({ ...prev, topicTitles: nextTopicTitles }));
+                            if (event.target.value.trim()) {
+                              setModuleFieldErrors((prev) => ({ ...prev, topicTitle: false }));
+                            }
+                          }}
+                          placeholder={`Topic ${index + 1}`}
+                          className={`w-full rounded-xl border bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400 ${
+                            moduleFieldErrors.topicTitle ? "border-rose-400" : "border-white/20"
+                          }`}
+                        />
+                        {(moduleForm.topicTitles || []).length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextTopicTitles = [...(moduleForm.topicTitles || [])];
+                              nextTopicTitles.splice(index, 1);
+                              setModuleForm((prev) => ({
+                                ...prev,
+                                topicTitles: nextTopicTitles.length > 0 ? nextTopicTitles : [""],
+                              }));
+                            }}
+                            className="rounded-full bg-white/10 px-2 py-1 text-xs text-slate-200 hover:bg-white/20"
+                          >
+                            −
+                          </button>
+                        ) : null}
+                        {isLast ? (
+                          <button
+                            type="button"
+                            onClick={() => setModuleForm((prev) => ({
+                              ...prev,
+                              topicTitles: [...(prev.topicTitles || []), ""],
+                            }))}
+                            className="rounded-full bg-amber-500 px-2 py-1 text-xs font-semibold text-[#0b1728] hover:bg-amber-400"
+                          >
+                            +
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
                 <p className="mt-2 text-xs text-slate-400">
-                  Use multiple lines for topic details, such as bullet points or section highlights.
+                  Add separate topic entries to describe each section or lesson point.
                 </p>
               </div>
 
@@ -2132,49 +2197,90 @@ export default function AdminWorkspace({
                 </div>
               </div>
               <div className="md:col-span-2">
-                <textarea
-                  rows={4}
-                  value={editingModule.topicTitle}
-                  onChange={(event) => setEditingModule((prev) => ({ ...prev, topicTitle: event.target.value }))}
-                  className="w-full rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
-                  placeholder="Open Module Title / Topic\n• History and Logic of the Korean Alphabet\n• Basic Vowels and Consonants\n• Syllable Block Construction"
-                />
+                <div className="space-y-2">
+                  {(editingModule.topicTitles || [""]).map((topic, index, allTopics) => {
+                    const isLast = index === allTopics.length - 1;
+                    return (
+                      <div key={index} className="flex items-center gap-2">
+                        <input
+                          required={index === 0}
+                          value={topic}
+                          onChange={(event) => {
+                            const nextTopicTitles = [...(editingModule.topicTitles || [])];
+                            nextTopicTitles[index] = event.target.value;
+                            setEditingModule((prev) => ({ ...prev, topicTitles: nextTopicTitles }));
+                          }}
+                          placeholder={`Topic ${index + 1}`}
+                          className="w-full rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+                        />
+                        {allTopics.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextTopicTitles = [...(editingModule.topicTitles || [])];
+                              nextTopicTitles.splice(index, 1);
+                              setEditingModule((prev) => ({
+                                ...prev,
+                                topicTitles: nextTopicTitles.length > 0 ? nextTopicTitles : [""],
+                              }));
+                            }}
+                            className="rounded-full bg-white/10 px-2 py-1 text-xs text-slate-200 hover:bg-white/20"
+                          >
+                            −
+                          </button>
+                        ) : null}
+                        {isLast ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditingModule((prev) => ({
+                              ...prev,
+                              topicTitles: [...(prev.topicTitles || []), ""],
+                            }))}
+                            className="rounded-full bg-amber-500 px-2 py-1 text-xs font-semibold text-[#0b1728] hover:bg-amber-400"
+                          >
+                            +
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
                 <p className="mt-2 text-xs text-slate-400">
-                  Enter the topic/title as multiline text to describe module sections or lessons.
+                  Add separate topic entries to describe each section or lesson point.
                 </p>
               </div>
 
-              <select
-                value={editingModule.status || MODULE_STATUS.ACTIVE}
-                onChange={(event) => setEditingModule((prev) => ({ ...prev, status: event.target.value }))}
-                className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
-              >
-                <option value={MODULE_STATUS.ACTIVE}>Active</option>
-                <option value={MODULE_STATUS.DRAFT}>Draft</option>
-              </select>
+              <div className="md:col-span-2 grid gap-3 md:grid-cols-3 md:items-center">
+                <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-white/30 bg-[#13243d] px-4 py-3 text-sm text-slate-200 hover:border-amber-400">
+                  <Upload className="mr-2 h-5 w-5 text-amber-400" />
+                  <span className="font-semibold">Drop files here</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    className="hidden"
+                    disabled={isEditFileUploading}
+                    onChange={(event) => handleModuleFileUpload(event.target.files?.[0], true)}
+                  />
+                </label>
 
-              <label className="md:col-span-2 inline-flex items-center gap-2 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={autoReactivateAfterEdit}
-                  onChange={(event) => setAutoReactivateAfterEdit(event.target.checked)}
-                />
-                Auto activate after save
-              </label>
+                <select
+                  value={editingModule.status || MODULE_STATUS.ACTIVE}
+                  onChange={(event) => setEditingModule((prev) => ({ ...prev, status: event.target.value }))}
+                  className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+                >
+                  <option value={MODULE_STATUS.ACTIVE}>Active</option>
+                  <option value={MODULE_STATUS.DRAFT}>Draft</option>
+                </select>
 
-              <label className="md:col-span-2 flex cursor-pointer flex-col rounded-xl border border-dashed border-white/30 bg-[#13243d] px-3 py-3 text-sm text-slate-200 hover:border-amber-400">
-                <span className="font-semibold">Add another module file</span>
-                <span className="mt-1 text-xs text-slate-400">
-                  Upload a new PDF, DOC, or DOCX file to add to the module. Existing uploaded files remain attached.
-                </span>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  className="hidden"
-                  disabled={isEditFileUploading}
-                  onChange={(event) => handleModuleFileUpload(event.target.files?.[0], true)}
-                />
-              </label>
+                <label className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={autoReactivateAfterEdit}
+                    onChange={(event) => setAutoReactivateAfterEdit(event.target.checked)}
+                  />
+                  Auto activate after save
+                </label>
+              </div>
               {isEditFileUploading ? (
                 <p className="md:col-span-2 text-xs text-amber-300">Uploading additional file, please wait...</p>
               ) : null}
