@@ -25,6 +25,29 @@ async function requireAdminProfile() {
   return profile;
 }
 
+async function broadcastNotification(serverSupabase, notification) {
+  const { data: profiles, error: profilesError } = await serverSupabase
+    .from("profiles")
+    .select("id")
+    .eq("role", "user");
+
+  if (profilesError || !Array.isArray(profiles) || !profiles.length) {
+    return;
+  }
+
+  const rows = profiles.map((profile) => ({
+    user_id: profile.id,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    related_id: notification.relatedId || "",
+    is_read: false,
+    created_at: new Date().toISOString(),
+  }));
+
+  await serverSupabase.from("notifications").insert(rows);
+}
+
 export async function POST(request) {
   try {
     const adminProfile = await requireAdminProfile();
@@ -50,6 +73,13 @@ export async function POST(request) {
     if (error) {
       return NextResponse.json({ error: error.message || String(error) }, { status: 500 });
     }
+
+    await broadcastNotification(serverSupabase, {
+      type: "container_added",
+      title: "New learning module available",
+      message: `A new learning module is now available: ${title}.`,
+      relatedId: data?.id || "",
+    });
 
     return NextResponse.json({ container: data });
   } catch (error) {

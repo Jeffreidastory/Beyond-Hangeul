@@ -25,6 +25,29 @@ async function requireAdminProfile() {
   return profile;
 }
 
+async function broadcastNotification(serverSupabase, notification) {
+  const { data: profiles, error: profilesError } = await serverSupabase
+    .from("profiles")
+    .select("id")
+    .eq("role", "user");
+
+  if (profilesError || !Array.isArray(profiles) || !profiles.length) {
+    return;
+  }
+
+  const rows = profiles.map((profile) => ({
+    user_id: profile.id,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    related_id: notification.relatedId || "",
+    is_read: false,
+    created_at: new Date().toISOString(),
+  }));
+
+  await serverSupabase.from("notifications").insert(rows);
+}
+
 export async function PATCH(request) {
   try {
     const adminProfile = await requireAdminProfile();
@@ -37,6 +60,16 @@ export async function PATCH(request) {
 
     if (!moduleId) {
       return NextResponse.json({ error: "Module id is required." }, { status: 400 });
+    }
+
+    const { data: previousModule, error: previousError } = await serverSupabase
+      .from("learning_modules")
+      .select("module_name, resource_files")
+      .eq("id", moduleId)
+      .maybeSingle();
+
+    if (previousError) {
+      return NextResponse.json({ error: previousError.message || String(previousError) }, { status: 500 });
     }
 
     const nextPatch = {};
@@ -64,6 +97,25 @@ export async function PATCH(request) {
 
     if (result.error) {
       return NextResponse.json({ error: result.error.message || String(result.error) }, { status: 500 });
+    }
+
+    const fileUpdateTriggered = payload.resourceFiles !== undefined || payload.resourceFileData !== undefined;
+    if (fileUpdateTriggered && previousModule) {
+      const previousFiles = Array.isArray(previousModule.resource_files) ? previousModule.resource_files : [];
+      const nextFileCount = Array.isArray(payload.resourceFiles) ? payload.resourceFiles.length : previousFiles.length;
+      const isNewFile = payload.resourceFiles !== undefined && nextFileCount > previousFiles.length;
+      const notificationType = isNewFile ? "module_pdf_added" : "module_pdf_updated";
+      const notificationTitle = isNewFile ? "New lesson added" : "Lesson updated";
+      const notificationMessage = isNewFile
+        ? `New PDF lesson added in ${String(previousModule.module_name || "your module")}.`
+        : `A lesson file was updated in ${String(previousModule.module_name || "your module")}.`;
+
+      await broadcastNotification(serverSupabase, {
+        type: notificationType,
+        title: notificationTitle,
+        message: notificationMessage,
+        relatedId: moduleId,
+      });
     }
 
     return NextResponse.json({ ok: true });
@@ -118,6 +170,14 @@ export async function POST(request) {
     if (result.error) {
       return NextResponse.json({ error: result.error.message || String(result.error) }, { status: 500 });
     }
+
+    const moduleName = String(result.data?.module_name || payload.moduleName || "New module");
+    await broadcastNotification(serverSupabase, {
+      type: "module_added",
+      title: "New module available",
+      message: `A new learning module is now available: ${moduleName}.`,
+      relatedId: result.data?.id || "",
+    });
 
     return NextResponse.json({ module: result.data });
   } catch (error) {

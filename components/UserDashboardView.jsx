@@ -46,6 +46,8 @@ import {
   upsertModuleProgressShared,
   upsertWorksheetProgressShared,
   updateResourceNote,
+  listNotificationsShared,
+  markAllNotificationsReadShared,
 } from "@/services/dashboardDataService";
 import UserPathTimeline from "@/components/path/UserPathTimeline";
 import HeroLearningCard from "@/components/user/dashboard/HeroLearningCard";
@@ -109,6 +111,18 @@ function getMonthMatrix() {
   return { now, cells };
 }
 
+function formatRelativeTime(createdAt) {
+  const createdDate = new Date(createdAt);
+  const diffMs = Date.now() - createdDate.getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 export default function UserDashboardView({
   userId,
   userName,
@@ -125,7 +139,9 @@ export default function UserDashboardView({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(2);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
   const setTab = useCallback((tabKey) => {
     setActiveTab(tabKey);
@@ -177,6 +193,18 @@ export default function UserDashboardView({
     () => (goalText ? [{ title: "Current Goal", description: goalText }] : []),
     [goalText],
   );
+
+  const unreadCount = notifications.filter((notification) => !notification.isRead).length;
+
+  const handleToggleNotifications = async () => {
+    const willOpen = !notificationsOpen;
+    if (willOpen) {
+      await loadNotifications();
+      await markAllNotificationsReadShared(userId);
+      setNotifications((prevNotifications) => prevNotifications.map((item) => ({ ...item, isRead: true })));
+    }
+    setNotificationsOpen(willOpen);
+  };
 
   const {
     query,
@@ -310,21 +338,26 @@ export default function UserDashboardView({
     }
   }, [learningData.modules, userEmail, userId]);
 
+  const loadNotifications = useCallback(async () => {
+    setNotificationsLoading(true);
+    try {
+      const nextNotifications = await listNotificationsShared(userId);
+      setNotifications(nextNotifications);
+    } catch (error) {
+      console.warn("Unable to load notifications:", error);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, [userId]);
+
   const loadDashboardData = useCallback(async () => {
     await refreshLearningData();
   }, [refreshLearningData]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setNotificationCount((count) => Math.min(count + 1, 9));
-    }, 18000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     void loadDashboardData();
-  }, [loadDashboardData]);
+    void loadNotifications();
+  }, [loadDashboardData, loadNotifications]);
 
   useRealtimeTables({
     tables: [
@@ -337,6 +370,7 @@ export default function UserDashboardView({
       "user_module_access",
       "worksheet_progress",
       "module_progress",
+      "notifications",
     ],
     channelName: `user-dashboard-${userId}`,
     onChange: () => {
@@ -347,6 +381,7 @@ export default function UserDashboardView({
       realtimeReloadTimerRef.current = setTimeout(() => {
         realtimeReloadTimerRef.current = null;
         void loadDashboardData();
+        void loadNotifications();
       }, 120);
     },
   });
@@ -1813,17 +1848,74 @@ export default function UserDashboardView({
               </span>
             </button>
 
-            <button
-              type="button"
-              className={`relative rounded-full border p-2 ${isLight ? "border-slate-200 bg-slate-100" : "border-white/10 bg-white/5"}`}
-            >
-              <Bell size={18} />
-              {notificationCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-[#0b1728]">
-                  {notificationCount}
-                </span>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={handleToggleNotifications}
+                className={`relative rounded-full border p-2 ${isLight ? "border-slate-200 bg-slate-100" : "border-white/10 bg-white/5"}`}
+                aria-label="Open notifications"
+                aria-expanded={notificationsOpen}
+              >
+                <Bell size={18} />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-[#0b1728]">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <div className="absolute right-0 z-40 mt-2 w-80 max-h-96 overflow-hidden rounded-3xl border border-white/10 bg-[#0f1d32] shadow-2xl">
+                  <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Notifications</p>
+                      <p className="text-xs text-slate-400">{unreadCount} unread</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await markAllNotificationsReadShared(userId);
+                        setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+                      }}
+                      className="text-xs text-slate-400 transition hover:text-white"
+                    >
+                      Mark all read
+                    </button>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto">
+                    {notificationsLoading ? (
+                      <div className="px-4 py-6 text-sm text-slate-400">Loading notifications...</div>
+                    ) : notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-sm text-slate-400">No notifications yet.</div>
+                    ) : (
+                      <div className="space-y-2 px-3 py-3">
+                        {notifications.map((notification) => (
+                          <button
+                            key={notification.id}
+                            type="button"
+                            onClick={async () => {
+                              if (!notification.isRead) {
+                                await markAllNotificationsReadShared(userId);
+                                setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+                              }
+                            }}
+                            className={`w-full rounded-2xl border px-3 py-3 text-left transition ${notification.isRead ? "border-white/10 bg-white/5 text-slate-300 hover:border-white/20" : "border-amber-300/20 bg-white/10 text-white shadow-sm shadow-amber-500/10 hover:border-amber-300"}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold">{notification.title}</span>
+                              {!notification.isRead && <span className="h-2 w-2 rounded-full bg-amber-400" />}
+                            </div>
+                            <p className="mt-1 text-xs text-slate-400">{notification.message}</p>
+                            <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">{formatRelativeTime(notification.createdAt)}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
 
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold leading-tight">{userName}</p>

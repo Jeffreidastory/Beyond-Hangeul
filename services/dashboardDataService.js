@@ -1494,6 +1494,37 @@ export async function listWorksheetsShared({ forceReload = false } = {}) {
   }
 }
 
+async function broadcastNotificationForAllUsers(notification) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "user");
+
+    if (profilesError || !Array.isArray(profiles) || !profiles.length) {
+      return;
+    }
+
+    const rows = profiles.map((profile) => ({
+      user_id: profile.id,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      related_id: notification.relatedId || "",
+      is_read: false,
+      created_at: new Date().toISOString(),
+    }));
+
+    const { error: insertError } = await supabase.from("notifications").insert(rows);
+    if (insertError) {
+      console.warn("Unable to broadcast notifications:", insertError);
+    }
+  } catch (error) {
+    console.warn("Unable to broadcast notifications:", error);
+  }
+}
+
 export async function createWorksheetShared(payload) {
   try {
     const supabase = getSupabaseBrowserClient();
@@ -1514,7 +1545,16 @@ export async function createWorksheetShared(payload) {
       .single();
 
     if (error) throw error;
-    return mapWorksheetRowToModel(data);
+
+    const worksheet = mapWorksheetRowToModel(data);
+    await broadcastNotificationForAllUsers({
+      type: "worksheet_added",
+      title: "New worksheet available",
+      message: `A new worksheet is now available: ${worksheet.title}`,
+      relatedId: worksheet.id,
+    });
+
+    return worksheet;
   } catch {
     return createWorksheet(payload);
   }
@@ -1523,6 +1563,12 @@ export async function createWorksheetShared(payload) {
 export async function updateWorksheetShared(worksheetId, patch) {
   try {
     const supabase = getSupabaseBrowserClient();
+    const { data: currentWorksheet } = await supabase
+      .from("learning_worksheets")
+      .select("title")
+      .eq("id", worksheetId)
+      .maybeSingle();
+
     const nextPatch = {
       updated_at: new Date().toISOString(),
     };
@@ -1537,6 +1583,16 @@ export async function updateWorksheetShared(worksheetId, patch) {
 
     const { error } = await supabase.from("learning_worksheets").update(nextPatch).eq("id", worksheetId);
     if (error) throw error;
+
+    const worksheetTitle = patch.title || currentWorksheet?.title || "Worksheet";
+    if (patch.title !== undefined || patch.resourceFileName !== undefined || patch.resourceFileData !== undefined || patch.resourceFileType !== undefined || patch.entries !== undefined || patch.description !== undefined) {
+      await broadcastNotificationForAllUsers({
+        type: "worksheet_updated",
+        title: "Worksheet updated",
+        message: `A worksheet was updated: ${worksheetTitle}`,
+        relatedId: worksheetId,
+      });
+    }
   } catch {
     updateWorksheet(worksheetId, patch);
   }
@@ -2165,6 +2221,76 @@ export async function getUserLearningDataShared(userId) {
     };
   } catch (error) {
     throw normalizeError(error);
+  }
+}
+
+function mapNotificationRowToModel(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    relatedId: row.related_id || "",
+    isRead: Boolean(row.is_read),
+    createdAt: row.created_at,
+  };
+}
+
+export async function listNotificationsShared(userId, { limit = 20 } = {}) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("id, type, title, message, related_id, is_read, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      throw error;
+    }
+
+    return (data || []).map(mapNotificationRowToModel);
+  } catch (error) {
+    console.warn("Unable to list notifications:", error);
+    return [];
+  }
+}
+
+export async function markNotificationsReadShared(notificationIds = []) {
+  if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+    return;
+  }
+
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .in("id", notificationIds);
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    console.warn("Unable to mark notifications read:", error);
+  }
+}
+
+export async function markAllNotificationsReadShared(userId) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", userId)
+      .eq("is_read", false);
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    console.warn("Unable to mark all notifications read:", error);
   }
 }
 

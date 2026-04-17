@@ -238,6 +238,41 @@ create table if not exists public.learning_containers (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  type text not null check (type in ('module_pdf_added','module_pdf_updated','worksheet_added','worksheet_updated','container_added','module_added')),
+  title text not null,
+  message text not null,
+  related_id text not null default '',
+  is_read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table public.notifications enable row level security;
+
+drop policy if exists "Authenticated users can read own notifications" on public.notifications;
+create policy "Authenticated users can read own notifications"
+  on public.notifications
+  for select
+  to authenticated
+  using (user_id = auth.uid());
+
+drop policy if exists "Users can mark own notifications read" on public.notifications;
+create policy "Users can mark own notifications read"
+  on public.notifications
+  for update
+  to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "Admins can create notifications" on public.notifications;
+create policy "Admins can create notifications"
+  on public.notifications
+  for insert
+  to authenticated
+  with check (public.is_admin());
+
 create table if not exists public.payment_records (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
