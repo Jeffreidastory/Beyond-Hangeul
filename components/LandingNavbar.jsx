@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 
 const SECTION_IDS = ["home", "about", "reviews", "contact"];
 
@@ -18,6 +20,33 @@ export default function LandingNavbar() {
     ],
     []
   );
+  const [loadingSignIn, setLoadingSignIn] = useState(false);
+  const router = useRouter();
+
+  const handleSignInClick = async (event) => {
+    event.preventDefault();
+    const supabase = getSupabaseBrowserClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.user) {
+      router.push("/auth/login");
+      return;
+    }
+
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", session.user.id).maybeSingle();
+    const isAdmin = profile?.role === "admin";
+
+    if (isAdmin) {
+      router.push("/auth/login");
+      return;
+    }
+
+    setLoadingSignIn(true);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    router.push("/dashboard");
+  };
 
   useEffect(() => {
     const getOffset = () => {
@@ -110,12 +139,28 @@ export default function LandingNavbar() {
             ))}
           </div>
 
-          <Link
-            href="/auth/login"
-            className="rounded-md bg-[#f6b21f] px-6 py-3 text-sm font-bold tracking-wide text-[#07223a] transition hover:bg-[#ffc43d]"
+          <button
+            type="button"
+            onClick={handleSignInClick}
+            disabled={loadingSignIn}
+            className="relative rounded-md bg-[#f6b21f] px-6 py-3 text-sm font-bold tracking-wide text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-not-allowed disabled:opacity-70"
           >
-            SIGN IN
-          </Link>
+            {loadingSignIn && <span className="absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />}
+            <span className="relative z-10 inline-flex items-center justify-center">
+              {loadingSignIn ? (
+                <>
+                  <span className="invisible">SIGN IN</span>
+                  <span className="absolute inset-x-0 flex items-center justify-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-0" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-150" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-300" />
+                  </span>
+                </>
+              ) : (
+                "SIGN IN"
+              )}
+            </span>
+          </button>
           <Link
             href="/auth/register"
             className="rounded-md border border-white/30 bg-[#0a2237] px-6 py-3 text-sm font-bold tracking-wide text-white transition hover:bg-[#11324f]"

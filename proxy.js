@@ -49,9 +49,16 @@ export async function proxy(request) {
   }
 
   if (user && isAuthRoute) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/dashboard";
-    return NextResponse.redirect(redirectUrl);
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    const isAdminUser = profile?.role === "admin";
+
+    if (!isAdminUser) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/dashboard";
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    return response;
   }
 
   if (user && isAdminRoute) {

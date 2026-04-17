@@ -23,9 +23,14 @@ export default function LoginForm() {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (session?.user) {
-        setAutoLogin(true);
+      if (!session?.user) {
+        return;
       }
+
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", session.user.id).maybeSingle();
+      const isAdmin = profile?.role === "admin";
+
+      setAutoLogin(!isAdmin);
     };
 
     void checkSession();
@@ -34,9 +39,27 @@ export default function LoginForm() {
   const onSubmit = async (event) => {
     event.preventDefault();
     setError("");
-    setLoading(true);
 
     const supabase = getSupabaseBrowserClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const hasSession = Boolean(session?.user);
+    const profileResult = session?.user
+      ? await supabase.from("profiles").select("role").eq("id", session.user.id).maybeSingle()
+      : { data: { profile: null } };
+    const isAdminSession = profileResult.data?.role === "admin";
+
+    setAutoLogin(hasSession && !isAdminSession);
+    setLoading(true);
+
+    if (hasSession && !isAdminSession) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      await router.push("/dashboard");
+      return;
+    }
+
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (signInError) {
@@ -125,12 +148,12 @@ export default function LoginForm() {
         {!loading && <span className="relative z-10">Sign In</span>}
 
         {loading && autoLogin ? (
-          <span className="relative z-10 flex items-center gap-2">
-            <span>Logging in</span>
-            <span className="flex items-center gap-[3px]">
-              <span className="h-[5px] w-[5px] rounded-full bg-[#07223a] animate-bounce [animation-delay:0ms]" />
-              <span className="h-[5px] w-[5px] rounded-full bg-[#07223a] animate-bounce [animation-delay:150ms]" />
-              <span className="h-[5px] w-[5px] rounded-full bg-[#07223a] animate-bounce [animation-delay:300ms]" />
+          <span className="relative z-10 inline-flex items-center justify-center">
+            <span className="invisible">Sign In</span>
+            <span className="absolute inset-x-0 flex items-center justify-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-0" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-150" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-300" />
             </span>
           </span>
         ) : loading ? (
