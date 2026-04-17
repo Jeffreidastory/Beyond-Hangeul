@@ -7,6 +7,7 @@ import {
   PAYMENT_STATUS,
 } from "@/types/dashboardModels";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { getPaymentRequests, getUserSubscription } from "@/services/paymentStore";
 
 const STORAGE_KEY = "bh-dashboard-data-v1";
 const DASHBOARD_BLOB_STORE_KEY = "__bhDashboardBlobStore";
@@ -906,11 +907,20 @@ export function listUsersWithStatus(initialUsers = []) {
         .map((access) => access.moduleId)
     );
 
+    const subscription = getUserSubscription(user.id);
+    const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
     const hasOneTimeApproved = store.payments.some(
-      (payment) => payment.userId === user.id && payment.status === PAYMENT_STATUS.APPROVED
+      (payment) => payment.userId === user.id && payment.status === PAYMENT_STATUS.APPROVED,
     );
+    const premiumAccessAllowed = hasOneTimeApproved || hasActiveSubscription;
 
-    const autoUnlockedPremiumIds = hasOneTimeApproved
+    if (!premiumAccessAllowed) {
+      store.modules
+        .filter((module) => module.type === MODULE_TYPE.PAID)
+        .forEach((module) => unlockedModuleIds.delete(module.id));
+    }
+
+    const autoUnlockedPremiumIds = premiumAccessAllowed
       ? store.modules.filter((module) => module.type === MODULE_TYPE.PAID).map((module) => module.id)
       : [];
 
@@ -951,21 +961,21 @@ export function getUserLearningData(userId) {
       .map((access) => [access.moduleId, access.status])
   );
 
+  const subscription = getUserSubscription(userId);
+  const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
   const hasOneTimeApproved = store.payments.some(
-    (payment) => payment.userId === userId && payment.status === PAYMENT_STATUS.APPROVED
+    (payment) => payment.userId === userId && payment.status === PAYMENT_STATUS.APPROVED,
   );
+  const premiumAccessAllowed = hasOneTimeApproved || hasActiveSubscription;
 
   const modules = store.modules.map((module) => {
     const isFree = module.type === MODULE_TYPE.FREE;
-    const hasPremiumUnlock = hasOneTimeApproved && module.type === MODULE_TYPE.PAID;
     const isInactive = (module.status || MODULE_STATUS.ACTIVE) !== MODULE_STATUS.ACTIVE;
     const accessStatus = isInactive
       ? MODULE_ACCESS.LOCKED
       : isFree
       ? MODULE_ACCESS.UNLOCKED
-      : hasPremiumUnlock
-        ? MODULE_ACCESS.UNLOCKED
-      : accessMap.get(module.id) === MODULE_ACCESS.UNLOCKED
+      : premiumAccessAllowed
         ? MODULE_ACCESS.UNLOCKED
         : MODULE_ACCESS.LOCKED;
 
@@ -2089,17 +2099,19 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
     }
 
     const result = users.map((user) => {
+      const subscription = getUserSubscription(user.id);
+      const subscriptionRequests = getPaymentRequests().filter((request) => request.userId === user.id);
+      const latestSubscriptionRequest = subscriptionRequests
+        .sort((left, right) => new Date(right.submittedAt).getTime() - new Date(left.submittedAt).getTime())[0] || null;
+      const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
+
       const unlockedModuleIds = new Set(
         accessRows
           .filter((access) => access.userId === user.id && access.status === MODULE_ACCESS.UNLOCKED)
           .map((access) => access.moduleId)
       );
 
-      const hasOneTimeApproved = payments.some(
-        (payment) => payment.userId === user.id && payment.status === PAYMENT_STATUS.APPROVED
-      );
-
-      if (hasOneTimeApproved) {
+      if (hasActiveSubscription) {
         modules
           .filter((module) => module.type === MODULE_TYPE.PAID)
           .forEach((module) => unlockedModuleIds.add(module.id));
@@ -2115,6 +2127,8 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
 
       return {
         ...user,
+        subscription,
+        latestSubscriptionRequest,
         unlockedModules,
         pendingPayments,
         paymentRecords,
@@ -2238,21 +2252,20 @@ export async function getUserLearningDataShared(userId) {
         .map((access) => [access.moduleId, access.status])
     );
 
-    const hasOneTimeApproved = payments.some((payment) => payment.status === PAYMENT_STATUS.APPROVED);
+    const subscription = getUserSubscription(userId);
+    const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
+    const premiumAccessAllowed = hasActiveSubscription;
 
     const modulesWithAccess = modules.map((module) => {
       const isFree = module.type === MODULE_TYPE.FREE;
-      const hasPremiumUnlock = hasOneTimeApproved && module.type === MODULE_TYPE.PAID;
       const isInactive = (module.status || MODULE_STATUS.ACTIVE) !== MODULE_STATUS.ACTIVE;
       const accessStatus = isInactive
         ? MODULE_ACCESS.LOCKED
         : isFree
           ? MODULE_ACCESS.UNLOCKED
-          : hasPremiumUnlock
+          : premiumAccessAllowed
             ? MODULE_ACCESS.UNLOCKED
-            : accessMap.get(module.id) === MODULE_ACCESS.UNLOCKED
-              ? MODULE_ACCESS.UNLOCKED
-              : MODULE_ACCESS.LOCKED;
+            : MODULE_ACCESS.LOCKED;
 
       return {
         ...module,

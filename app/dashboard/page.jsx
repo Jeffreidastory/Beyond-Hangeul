@@ -85,17 +85,12 @@ async function loadInitialLearningData(userId) {
     approvedAt: row.approved_at,
   }));
 
-  const hasOneTimeApproved = payments.some((payment) => payment.status === "approved");
-
   const modulesWithAccess = modules.map((module) => {
     const isFree = module.type === "free";
-    const hasPremiumUnlock = hasOneTimeApproved && module.type === "paid";
     const isInactive = (module.status || "active") !== "active";
     const accessStatus = isInactive
       ? "locked"
       : isFree
-      ? "unlocked"
-      : hasPremiumUnlock
       ? "unlocked"
       : accessMap.get(module.id) === "unlocked"
       ? "unlocked"

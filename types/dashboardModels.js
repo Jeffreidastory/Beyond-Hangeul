@@ -30,6 +30,16 @@ export const PAYMENT_STATUS = {
   REJECTED: "rejected",
 };
 
+export const PAYMENT_METHOD_TYPES = {
+  E_WALLET: "e-wallet",
+  BANK: "bank",
+};
+
+export const PAYMENT_PLAN_TYPES = {
+  MONTHLY: "monthly",
+  YEARLY: "yearly",
+};
+
 export const PAYMENT_METHODS = ["GCash", "GoTyme"];
 
 export const ADMIN_SECTIONS = [
@@ -38,5 +48,6 @@ export const ADMIN_SECTIONS = [
   { key: "worksheets", label: "Worksheets" },
   { key: "path", label: "Path" },
   { key: "users", label: "Users" },
+  { key: "payments", label: "Payments" },
   { key: "sales-report", label: "Sales Report" },
 ];

@@ -13,8 +13,6 @@ import {
 } from "@/types/dashboardModels";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import {
-  ONE_TIME_PREMIUM_MODULE_ID,
-  approvePaymentAndGrantAccessShared,
   createContainerShared,
   createModuleShared,
   createWorksheetShared,
@@ -25,7 +23,6 @@ import {
   invalidateAdminCache,
   listContainersShared,
   listModulesShared,
-  listPaymentsShared,
   listWorksheetsShared,
   listUsersWithStatusShared,
   syncUsers,
@@ -33,6 +30,7 @@ import {
   updateModuleShared,
   updateWorksheetShared,
 } from "@/services/dashboardDataService";
+import { getPaymentRequests, updatePaymentRequestStatus } from "@/services/paymentStore";
 import SummaryCard from "@/components/admin/cards/SummaryCard";
 import PendingPaymentsTable from "@/components/admin/payments/PendingPaymentsTable";
 import RecentActivityPanel from "@/components/admin/activity/RecentActivityPanel";
@@ -40,6 +38,7 @@ import QuickActionsCard from "@/components/admin/dashboard/QuickActionsCard";
 import SalesOverviewCard from "@/components/admin/dashboard/SalesOverviewCard";
 import ModuleOverviewCard from "@/components/admin/dashboard/ModuleOverviewCard";
 import PaymentProofModal from "@/components/admin/payments/PaymentProofModal";
+import PaymentManagementPanel from "@/components/admin/payments/PaymentManagementPanel";
 import AdminPathManagement from "@/components/path/AdminPathManagement";
 import { useRealtimeTables } from "@/services/realtime/useRealtimeTables";
 
@@ -81,6 +80,7 @@ const SECTION_ROUTES = {
   path: "/admin/path",
   worksheets: "/admin/worksheets",
   users: "/admin/users",
+  payments: "/admin/payments",
   "sales-report": "/admin/sales-report",
 };
 
@@ -129,7 +129,7 @@ export default function AdminWorkspace({
   const [modules, setModules] = useState([]);
   const [worksheets, setWorksheets] = useState([]);
   const [users, setUsers] = useState([]);
-  const [payments, setPayments] = useState([]);
+  const [paymentRequests, setPaymentRequests] = useState(() => getPaymentRequests());
 
   const [moduleForm, setModuleForm] = useState(defaultModule);
   const [worksheetForm, setWorksheetForm] = useState(defaultWorksheet);
@@ -208,19 +208,22 @@ export default function AdminWorkspace({
         fetchPromises = [listUsersWithStatusShared(initialUsers, { forceReload })];
         sectionKeys = ["users"];
         break;
+      case "payments":
+        fetchPromises = [];
+        sectionKeys = [];
+        break;
       case "sales-report":
-        fetchPromises = [listPaymentsShared({ forceReload }), listUsersWithStatusShared(initialUsers, { forceReload })];
-        sectionKeys = ["payments", "users"];
+        fetchPromises = [listUsersWithStatusShared(initialUsers, { forceReload })];
+        sectionKeys = ["users"];
         break;
       default:
         fetchPromises = [
           listModulesShared({ forceReload }),
           listUsersWithStatusShared(initialUsers, { forceReload }),
-          listPaymentsShared({ forceReload }),
           listWorksheetsShared({ forceReload }),
           listContainersShared({ forceReload }),
         ];
-        sectionKeys = ["modules", "users", "payments", "worksheets", "containers"];
+        sectionKeys = ["modules", "users", "worksheets", "containers"];
         break;
     }
 
@@ -250,9 +253,9 @@ export default function AdminWorkspace({
 
     applyRefresh("modules", setModules);
     applyRefresh("users", setUsers);
-    applyRefresh("payments", setPayments, [], true);
     applyRefresh("worksheets", setWorksheets);
     applyRefresh("containers", setContainers);
+    setPaymentRequests(getPaymentRequests());
 
     if (refreshError) {
       setStatusMessage("Some shared admin data could not be loaded. Check backend connectivity.");
@@ -382,6 +385,21 @@ export default function AdminWorkspace({
     });
   }, [refreshAll]);
 
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (!event.key) return;
+      if (event.key.startsWith("payment:") || event.key.startsWith("users:")) {
+        setPaymentRequests(getPaymentRequests());
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", handleStorageChange);
+      return () => window.removeEventListener("storage", handleStorageChange);
+    }
+    return undefined;
+  }, []);
+
   const handleAdminRealtimeUpdate = useCallback(() => {
     if (realtimeReloadTimerRef.current) {
       clearTimeout(realtimeReloadTimerRef.current);
@@ -467,32 +485,41 @@ export default function AdminWorkspace({
 
   const metrics = useMemo(() => {
     const paidModules = modules.filter((item) => item.type === MODULE_TYPE.PAID);
-    const pendingPayments = payments.filter((item) => item.status === PAYMENT_STATUS.PENDING);
-    const approvedPayments = payments.filter((item) => item.status === PAYMENT_STATUS.APPROVED);
+    const pendingPayments = paymentRequests.filter((item) => item.status === PAYMENT_STATUS.PENDING);
+    const approvedPayments = paymentRequests.filter((item) => item.status === PAYMENT_STATUS.APPROVED);
+    const premiumUsers = users.filter((user) => {
+      const role = String(user.role || "user").toLowerCase();
+      return role !== "admin" && (Array.isArray(user.unlockedModules) ? user.unlockedModules.length > 0 : false);
+    }).length;
 
     return {
       moduleCount: modules.length,
       paidModuleCount: paidModules.length,
       userCount: users.length,
+      premiumUsers,
       pendingPayments: pendingPayments.length,
       approvedPayments: approvedPayments.length,
     };
-  }, [modules, payments, users]);
+  }, [modules, paymentRequests, users]);
 
   const userAccountRows = useMemo(() => {
     return users.map((user) => {
       const role = String(user.role || "user").toLowerCase() === "admin" ? "admin" : "user";
       const isAdmin = role === "admin";
-      const hasPremiumAccess = !isAdmin && user.unlockedModules.length > 0;
-      const latestPaymentStatus = user.latestPayment?.status || "none";
+      const subscription = user.subscription || {};
+      const hasActiveSubscription = !isAdmin && subscription.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
+      const latestRequest = user.latestSubscriptionRequest || null;
+      const paymentStatus = isAdmin ? "na" : hasActiveSubscription ? "active" : latestRequest?.status || "na";
 
       return {
         ...user,
         role,
         isAdmin,
-        learningAccess: isAdmin ? "not-applicable" : hasPremiumAccess ? "premium" : "free",
-        paymentStatus: isAdmin ? "na" : latestPaymentStatus,
-        premiumEntitlement: isAdmin ? "na" : hasPremiumAccess ? "all-premium" : "none",
+        hasActiveSubscription,
+        latestSubscriptionRequest: latestRequest,
+        learningAccess: isAdmin ? "not-applicable" : hasActiveSubscription ? "premium" : "free",
+        paymentStatus,
+        premiumEntitlement: isAdmin ? "na" : hasActiveSubscription ? "all-premium" : "none",
       };
     });
   }, [users]);
@@ -538,16 +565,13 @@ export default function AdminWorkspace({
     const resolveUserName = (payment) =>
       userMap.get(payment.userId) || payment.userEmail?.split("@")[0] || "Learner";
 
-    const approvedPayments = payments.filter((item) => item.status === PAYMENT_STATUS.APPROVED);
-    const pendingPayments = payments
+    const approvedPayments = paymentRequests.filter((item) => item.status === PAYMENT_STATUS.APPROVED);
+    const pendingPayments = paymentRequests
       .filter((item) => item.status === PAYMENT_STATUS.PENDING)
       .sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
 
-    const getPaymentModuleLabel = (payment) =>
-      payment.moduleId === ONE_TIME_PREMIUM_MODULE_ID
-        ? "All Premium Modules"
-        : moduleMap.get(payment.moduleId)?.moduleName || "All Premium Modules";
-    const amountForPayment = (payment) => Number(payment.amount || 150);
+    const getPaymentModuleLabel = () => "Subscription Payment";
+    const amountForPayment = (payment) => Number(payment.amount || 0);
     const totalRevenue = approvedPayments.reduce((sum, payment) => sum + amountForPayment(payment), 0);
 
     const now = new Date();
@@ -592,7 +616,7 @@ export default function AdminWorkspace({
       ...approvedPayments.map((payment) => ({
         id: `approved-${payment.id}`,
         timestamp: new Date(payment.approvedAt || payment.submittedAt || 0).getTime(),
-        text: `${resolveUserName(payment)} purchased one-time premium access`,
+        text: `${resolveUserName(payment)} payment proof approved`,
       })),
       ...pendingPayments.map((payment) => ({
         id: `pending-${payment.id}`,
@@ -623,7 +647,7 @@ export default function AdminWorkspace({
       freeModuleCount: modules.filter((item) => item.type === MODULE_TYPE.FREE).length,
       mostPurchasedModuleName,
     };
-  }, [moduleMap, modules, payments, users]);
+  }, [moduleMap, modules, paymentRequests, users]);
 
   const formatPeso = (value) =>
     `P${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1079,8 +1103,8 @@ export default function AdminWorkspace({
     <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <SummaryCard icon="👥" label="Total Users" value={metrics.userCount} tone="sky" isLoading={isLoadingAdminData} />
-        <SummaryCard icon="📚" label="Total Modules" value={metrics.moduleCount} tone="slate" isLoading={isLoadingAdminData} />
-        <SummaryCard icon="🏷️" label="Premium Modules Sold" value={metrics.approvedPayments} tone="amber" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="�" label="Total Premium Users" value={metrics.premiumUsers} tone="emerald" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="�📚" label="Total Modules" value={metrics.moduleCount} tone="slate" isLoading={isLoadingAdminData} />
         <SummaryCard icon="⏳" label="Pending Payments" value={metrics.pendingPayments} tone="amber" isLoading={isLoadingAdminData} />
         <SummaryCard icon="💰" label="Total Revenue" value={formatPeso(dashboardInsights.totalRevenue)} tone="emerald" isLoading={isLoadingAdminData} />
       </div>
@@ -1093,8 +1117,9 @@ export default function AdminWorkspace({
             setSelectedPayment({ ...payment, userName: row?.userName || payment.userEmail });
           }}
           onApprove={async (payment) => {
-            await approvePaymentAndGrantAccessShared(payment.id);
-            setStatusMessage("Payment confirmed and module access granted.");
+            await updatePaymentRequestStatus(payment.id, PAYMENT_STATUS.APPROVED);
+            setPaymentRequests(getPaymentRequests());
+            setStatusMessage("Payment confirmed and subscription activated.");
             await refreshAll();
           }}
         />
@@ -1564,10 +1589,14 @@ export default function AdminWorkspace({
                   <td className="px-3 py-3">
                     {user.paymentStatus === "na" ? (
                       <span className="text-slate-500">—</span>
+                    ) : user.paymentStatus === "active" ? (
+                      <StatusBadge tone="green">Subscribed</StatusBadge>
                     ) : user.paymentStatus === PAYMENT_STATUS.APPROVED ? (
                       <StatusBadge tone="green">Approved</StatusBadge>
                     ) : user.paymentStatus === PAYMENT_STATUS.PENDING ? (
                       <StatusBadge tone="amber">Pending</StatusBadge>
+                    ) : user.paymentStatus === PAYMENT_STATUS.REJECTED ? (
+                      <StatusBadge tone="rose">Rejected</StatusBadge>
                     ) : (
                       <StatusBadge tone="slate">No Record</StatusBadge>
                     )}
@@ -1591,14 +1620,14 @@ export default function AdminWorkspace({
                         >
                           Manage
                         </button>
-                      ) : user.latestPayment ? (
+                      ) : user.latestSubscriptionRequest ? (
                         <>
                           <button
                             type="button"
-                            onClick={() => setSelectedPayment({ ...user.latestPayment, userName: user.name })}
+                            onClick={() => setSelectedPayment({ ...user.latestSubscriptionRequest, userName: user.name })}
                             className="rounded-lg border border-amber-400 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/20"
                           >
-                            View Payment
+                            View Request
                           </button>
                           <button
                             type="button"
@@ -1628,6 +1657,10 @@ export default function AdminWorkspace({
     </SectionCard>
   );
 
+  const renderPaymentManagement = () => (
+    <PaymentManagementPanel />
+  );
+
   const renderSalesReport = () => (
     <SectionCard title="Sales Report" subtitle="UI-only summary prepared for backend integration.">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1639,14 +1672,6 @@ export default function AdminWorkspace({
           <p className="text-xs uppercase tracking-wide text-slate-400">Total Users</p>
           <p className="mt-2 text-2xl font-bold">{metrics.userCount}</p>
         </article>
-        <article className="rounded-xl border border-white/10 bg-[#13243d] p-4">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Modules Sold</p>
-          <p className="mt-2 text-2xl font-bold">{metrics.approvedPayments}</p>
-        </article>
-        <article className="rounded-xl border border-white/10 bg-[#13243d] p-4">
-          <p className="text-xs uppercase tracking-wide text-slate-400">One-Time Payments</p>
-          <p className="mt-2 text-2xl font-bold">{metrics.approvedPayments}</p>
-        </article>
       </div>
     </SectionCard>
   );
@@ -1657,6 +1682,7 @@ export default function AdminWorkspace({
     path: renderPath,
     worksheets: renderWorksheets,
     users: renderUsers,
+    payments: renderPaymentManagement,
     "sales-report": renderSalesReport,
   };
 
@@ -2420,14 +2446,28 @@ export default function AdminWorkspace({
               </article>
 
               <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Subscription Plan</p>
+                <div className="mt-2 text-slate-200">
+                  {selectedUserAccount.subscription?.planLabel || "No Plan"}
+                </div>
+                {selectedUserAccount.subscription?.amount != null ? (
+                  <div className="mt-1 text-sm text-slate-400">₱{selectedUserAccount.subscription.amount.toFixed(2)}</div>
+                ) : null}
+              </article>
+
+              <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-400">Payment Status</p>
                 <div className="mt-2">
                   {selectedUserAccount.paymentStatus === "na" ? (
                     <span className="text-slate-500">—</span>
+                  ) : selectedUserAccount.paymentStatus === "active" ? (
+                    <StatusBadge tone="green">Subscribed</StatusBadge>
                   ) : selectedUserAccount.paymentStatus === PAYMENT_STATUS.APPROVED ? (
                     <StatusBadge tone="green">Approved</StatusBadge>
                   ) : selectedUserAccount.paymentStatus === PAYMENT_STATUS.PENDING ? (
                     <StatusBadge tone="amber">Pending</StatusBadge>
+                  ) : selectedUserAccount.paymentStatus === PAYMENT_STATUS.REJECTED ? (
+                    <StatusBadge tone="rose">Rejected</StatusBadge>
                   ) : (
                     <StatusBadge tone="slate">No Record</StatusBadge>
                   )}
@@ -2452,24 +2492,29 @@ export default function AdminWorkspace({
               <p>
                 Created: {selectedUserAccount.createdAt ? new Date(selectedUserAccount.createdAt).toLocaleString() : "-"}
               </p>
-              {selectedUserAccount.latestPayment?.submittedAt ? (
+              {selectedUserAccount.latestSubscriptionRequest?.submittedAt ? (
                 <p className="mt-1">
-                  Latest Payment: {new Date(selectedUserAccount.latestPayment.submittedAt).toLocaleString()} via {selectedUserAccount.latestPayment.method || PAYMENT_METHODS[0]}
+                  Latest Request: {new Date(selectedUserAccount.latestSubscriptionRequest.submittedAt).toLocaleString()} via {selectedUserAccount.latestSubscriptionRequest.methodLabel || selectedUserAccount.latestSubscriptionRequest.method}
+                </p>
+              ) : null}
+              {selectedUserAccount.subscription?.expiryDate ? (
+                <p className="mt-1">
+                  Expires: {new Date(selectedUserAccount.subscription.expiryDate).toLocaleDateString()}
                 </p>
               ) : null}
             </div>
 
             <div className="mt-4 flex justify-end gap-2">
-              {selectedUserAccount.latestPayment && !selectedUserAccount.isAdmin ? (
+              {selectedUserAccount.latestSubscriptionRequest && !selectedUserAccount.isAdmin ? (
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedPayment({ ...selectedUserAccount.latestPayment, userName: selectedUserAccount.name });
+                    setSelectedPayment({ ...selectedUserAccount.latestSubscriptionRequest, userName: selectedUserAccount.name });
                     setSelectedUserAccount(null);
                   }}
                   className="rounded-lg border border-amber-400 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/20"
                 >
-                  View Payment Proof
+                  View Request Proof
                 </button>
               ) : null}
               <button
@@ -2487,16 +2532,15 @@ export default function AdminWorkspace({
       <PaymentProofModal
         payment={selectedPayment}
         moduleName={
-          selectedPayment?.moduleId === ONE_TIME_PREMIUM_MODULE_ID
-            ? "All Premium Modules"
-            : moduleMap.get(selectedPayment?.moduleId)?.moduleName || "All Premium Modules"
+          moduleMap.get(selectedPayment?.moduleId)?.moduleName || "Subscription Payment"
         }
         onClose={() => setSelectedPayment(null)}
         onApprove={async () => {
           if (!selectedPayment) return;
-          await approvePaymentAndGrantAccessShared(selectedPayment.id);
+          await updatePaymentRequestStatus(selectedPayment.id, PAYMENT_STATUS.APPROVED);
+          setPaymentRequests(getPaymentRequests());
           setSelectedPayment(null);
-          setStatusMessage("Payment confirmed and module access granted.");
+          setStatusMessage("Subscription approved and activated.");
           await refreshAll();
         }}
       />

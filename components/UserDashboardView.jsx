@@ -28,9 +28,8 @@ import {
   X,
 } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
-import { PAYMENT_METHODS, PAYMENT_STATUS } from "@/types/dashboardModels";
+import { PAYMENT_STATUS } from "@/types/dashboardModels";
 import {
-  ONE_TIME_PREMIUM_MODULE_ID,
   createResourceFile,
   createResourceNote,
   deleteResourceFile,
@@ -39,7 +38,6 @@ import {
   getUserResourcesData,
   listModuleFileProgressShared,
   renameResourceFile,
-  submitPaymentProofShared,
   syncUsers,
   toggleResourceBookmark,
   upsertModuleFileProgressShared,
@@ -49,6 +47,13 @@ import {
   listNotificationsShared,
   markAllNotificationsReadShared,
 } from "@/services/dashboardDataService";
+import {
+  addPaymentRequest,
+  getPaymentMethods,
+  getPaymentPlans,
+  getPaymentRequests,
+  getUserSubscription,
+} from "@/services/paymentStore";
 import UserPathTimeline from "@/components/path/UserPathTimeline";
 import HeroLearningCard from "@/components/user/dashboard/HeroLearningCard";
 import LearningSummaryCards from "@/components/user/dashboard/LearningSummaryCards";
@@ -175,8 +180,16 @@ export default function UserDashboardView({
   const [resourcesNotice, setResourcesNotice] = useState("");
   const [goalText, setGoalText] = useState("");
   const [goalSaved, setGoalSaved] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0]);
-  const [receiptImage, setReceiptImage] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentPlans, setPaymentPlans] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [paymentRequests, setPaymentRequests] = useState([]);
+  const [selectedPlanId, setSelectedPlanId] = useState("monthly");
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [proofImage, setProofImage] = useState("");
+  const [proofFile, setProofFile] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [paymentNotice, setPaymentNotice] = useState("");
   const [worksheetNotice, setWorksheetNotice] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState("");
@@ -380,6 +393,17 @@ export default function UserDashboardView({
     }
   }, [userId]);
 
+  const loadPaymentStoreState = useCallback(() => {
+    const plans = getPaymentPlans();
+    const methods = getPaymentMethods();
+    setPaymentPlans(plans);
+    setPaymentMethods(methods);
+    setPaymentRequests(getPaymentRequests());
+    setSubscription(getUserSubscription(userId));
+    setSelectedPlanId((current) => current || plans[0]?.id || "monthly");
+    setPaymentMethod(methods[0]?.id || "gcash");
+  }, [userId]);
+
   const loadDashboardData = useCallback(async () => {
     await refreshLearningData();
   }, [refreshLearningData]);
@@ -388,7 +412,24 @@ export default function UserDashboardView({
     void loadDashboardData();
     void loadNotifications();
     void loadModuleFileProgress();
-  }, [loadDashboardData, loadNotifications, loadModuleFileProgress]);
+    loadPaymentStoreState();
+  }, [loadDashboardData, loadNotifications, loadModuleFileProgress, loadPaymentStoreState]);
+
+  useEffect(() => {
+    const handleStorageEvent = (event) => {
+      if (!event.key) return;
+      if (event.key.startsWith("payment:") || event.key.startsWith("users:")) {
+        loadPaymentStoreState();
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", handleStorageEvent);
+      return () => window.removeEventListener("storage", handleStorageEvent);
+    }
+
+    return undefined;
+  }, [loadPaymentStoreState]);
 
   useRealtimeTables({
     tables: [
@@ -545,14 +586,12 @@ export default function UserDashboardView({
     const targetWorksheet = learningData.worksheets.find(
       (sheet) => sheet.id === bookmark.itemId,
     );
-    const hasApprovedPremium = learningData.payments.some(
-      (payment) => payment.status === PAYMENT_STATUS.APPROVED,
-    );
+    const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
     const hasUnlockedPremiumModule = learningData.modules.some(
       (module) => module.type === "paid" && !module.isLocked,
     );
     const hasPremiumWorksheetAccess =
-      hasApprovedPremium || hasUnlockedPremiumModule;
+      hasActiveSubscription || hasUnlockedPremiumModule;
     const isWorksheetLocked =
       targetWorksheet?.accessType === "paid" && !hasPremiumWorksheetAccess;
 
@@ -621,22 +660,17 @@ export default function UserDashboardView({
   }, [learningData.worksheets, selectedWorksheetId]);
 
   const hasPendingPremiumPayment = useMemo(
-    () =>
-      learningData.payments.some(
-        (payment) => payment.status === PAYMENT_STATUS.PENDING,
-      ),
-    [learningData.payments],
+    () => subscription?.status === PAYMENT_STATUS.PENDING,
+    [subscription],
   );
 
   const hasPremiumWorksheetAccess = useMemo(() => {
-    const hasApprovedPremium = learningData.payments.some(
-      (payment) => payment.status === PAYMENT_STATUS.APPROVED,
-    );
+    const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
     const hasUnlockedPremiumModule = learningData.modules.some(
       (module) => module.type === "paid" && !module.isLocked,
     );
-    return hasApprovedPremium || hasUnlockedPremiumModule;
-  }, [learningData.modules, learningData.payments]);
+    return hasActiveSubscription || hasUnlockedPremiumModule;
+  }, [learningData.modules, subscription]);
 
   const isWorksheetLocked = useCallback(
     (worksheet) =>
@@ -983,6 +1017,15 @@ export default function UserDashboardView({
     () => learningData.modules.filter((module) => module.type === "paid"),
     [learningData.modules],
   );
+  const latestPaymentRequest = useMemo(() => {
+    return (
+      paymentRequests
+        .filter((request) => request.userId === userId)
+        .sort(
+          (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+        )[0] || null
+    );
+  }, [paymentRequests, userId]);
   const selectedPaymentModule = useMemo(() => {
     if (requestedPaymentModuleId) {
       return (
@@ -998,101 +1041,66 @@ export default function UserDashboardView({
     );
   }, [premiumModules, requestedPaymentModuleId]);
 
-  const latestPremiumPaymentRecord = useMemo(() => {
-    return (
-      learningData.payments
-        .filter(
-          (payment) =>
-            payment.moduleId === ONE_TIME_PREMIUM_MODULE_ID ||
-            payment.moduleId === selectedPaymentModule?.id ||
-            !payment.moduleId,
-        )
-        .sort(
-          (a, b) =>
-            new Date(b.submittedAt || 0).getTime() -
-            new Date(a.submittedAt || 0).getTime(),
-        )[0] || null
-    );
-  }, [learningData.payments, selectedPaymentModule?.id]);
-
-  const paymentStatusLabel =
-    latestPremiumPaymentRecord?.status || "not_submitted";
-
   const saveGoal = () => {
     window.localStorage.setItem(`bh-goal-${userId}`, goalText);
     setGoalSaved(true);
     setTimeout(() => setGoalSaved(false), 1800);
   };
 
-  const uploadReceipt = async (file) => {
+  const uploadProof = async (file) => {
     if (!file || !file.type.startsWith("image/")) return;
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error("receipt read error"));
+      reader.onerror = () => reject(new Error("proof read error"));
       reader.readAsDataURL(file);
     });
-    setReceiptImage(dataUrl);
+    setProofFile(file);
+    setProofImage(dataUrl);
   };
 
   const submitPayment = async () => {
-    if (paymentStatusLabel === "pending") {
-      setPaymentNotice(
-        "Payment already submitted. Please wait for admin verification.",
-      );
+    if (subscription?.status === PAYMENT_STATUS.PENDING) {
+      setPaymentNotice("Payment already submitted. Please wait for admin review.");
       return;
     }
 
-    if (paymentStatusLabel === "approved") {
-      setPaymentNotice(
-        "Premium access already approved. New payment proof cannot be submitted unless admin resets your payment status.",
-      );
-      return;
-    }
-
-    if (!receiptImage) {
+    if (!proofImage) {
       setPaymentNotice("Please upload payment proof first.");
       return;
     }
 
-    const paymentResult = await submitPaymentProofShared({
+    const selectedPlan = paymentPlans.find((plan) => plan.id === selectedPlanId);
+    const selectedMethod = paymentMethods.find((method) => method.id === paymentMethod);
+
+    const paymentResult = addPaymentRequest({
       userId,
-      userName,
       userEmail,
-      moduleId: ONE_TIME_PREMIUM_MODULE_ID,
-      amount: 150,
-      method: paymentMethod,
-      proofImage: receiptImage,
-      receiptImage,
+      userName,
+      planId: selectedPlanId,
+      plan: selectedPlan,
+      amount: selectedPlan?.price || 0,
+      method: selectedMethod,
+      reference: referenceNumber,
+      proofImage,
     });
 
-    if (
-      paymentResult?.blocked &&
-      paymentResult?.blockReason === "already-approved"
-    ) {
-      setPaymentNotice(
-        "Premium access already approved. New payment proof cannot be submitted unless admin resets your payment status.",
-      );
-      await refreshLearningData();
+    loadPaymentStoreState();
+
+    if (paymentResult?.blocked) {
+      if (paymentResult.blockReason === "already-active") {
+        setPaymentNotice("Subscription is already active. No new payment proof is required.");
+      } else if (paymentResult.blockReason === "pending-verification") {
+        setPaymentNotice("Payment already submitted. Please wait for admin review.");
+      }
       return;
     }
 
-    if (
-      paymentResult?.blocked &&
-      paymentResult?.blockReason === "pending-verification"
-    ) {
-      setPaymentNotice(
-        "Payment already submitted. Please wait for admin verification.",
-      );
-      await refreshLearningData();
-      return;
-    }
-
-    await refreshLearningData();
-    setPaymentNotice(
-      "Payment submitted. Waiting for admin verification for one-time premium access.",
-    );
-    setReceiptImage("");
+    setPaymentNotice("Payment proof submitted. Waiting for admin review.");
+    setProofFile(null);
+    setProofImage("");
+    setReferenceNumber("");
+    setPaymentModalOpen(false);
   };
 
   useEffect(() => {
@@ -1102,7 +1110,10 @@ export default function UserDashboardView({
   useEffect(() => {
     if (activeTab !== "payment") return;
     setPaymentNotice("");
-    setReceiptImage("");
+    setProofImage("");
+    setProofFile(null);
+    setReferenceNumber("");
+    setPaymentModalOpen(false);
   }, [activeTab, requestedPaymentModuleId]);
 
   const renderModulesGrouped = () => {
@@ -1370,7 +1381,7 @@ export default function UserDashboardView({
                     type="button"
                     onClick={() => {
                       setPaymentNotice("");
-                      setReceiptImage("");
+                      setProofImage("");
                       setTab("payment");
                     }}
                     className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2 text-xs font-semibold text-[#0b1728] hover:bg-amber-300 shadow-lg"
@@ -1619,7 +1630,7 @@ export default function UserDashboardView({
                                   "This worksheet is Premium. Unlock premium access first.",
                                 );
                                 setPaymentNotice("");
-                                setReceiptImage("");
+                                setProofImage("");
                                 setTab("payment");
                                 return;
                               }
@@ -1695,13 +1706,22 @@ export default function UserDashboardView({
     if (activeTab === "payment") {
       return (
         <UserPaymentSection
-          selectedModule={selectedPaymentModule}
-          paymentStatus={paymentStatusLabel}
-          paymentMethod={paymentMethod}
-          onChangeMethod={setPaymentMethod}
-          receiptImage={receiptImage}
-          onUploadProof={uploadReceipt}
-          onSubmit={submitPayment}
+          plans={paymentPlans}
+          methods={paymentMethods}
+          selectedPlanId={selectedPlanId}
+          selectedMethodId={paymentMethod}
+          paymentModalOpen={paymentModalOpen}
+          latestRequest={latestPaymentRequest}
+          subscription={subscription}
+          referenceNumber={referenceNumber}
+          proofImage={proofImage}
+          onSelectPlan={setSelectedPlanId}
+          onOpenModal={() => setPaymentModalOpen(true)}
+          onCloseModal={() => setPaymentModalOpen(false)}
+          onSelectMethod={setPaymentMethod}
+          onReferenceChange={setReferenceNumber}
+          onUploadProof={uploadProof}
+          onSubmitProof={submitPayment}
           notice={paymentNotice}
           isLight={isLight}
         />
