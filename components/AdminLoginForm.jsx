@@ -32,16 +32,16 @@ export default function AdminLoginForm() {
       email: FIXED_ADMIN_EMAIL,
       password,
     });
-    setLoading(false);
 
     if (signInError) {
+      setLoading(false);
       setError(
         "Admin sign-in failed. Ensure the admin auth user exists in Supabase and has role admin in profiles."
       );
       return;
     }
 
-    router.push("/admin");
+    await router.push("/admin");
     router.refresh();
   };
 
@@ -90,9 +90,24 @@ export default function AdminLoginForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-2xl bg-[#f6b21f] px-4 py-3 text-xl font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-not-allowed disabled:opacity-70"
+        className="relative inline-flex h-12 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#f6b21f] px-4 text-xl font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {loading ? "Signing In..." : "Admin Sign In"}
+        {loading && <span className="absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />}
+
+        <span className="relative z-10 inline-flex items-center justify-center">
+          {loading ? (
+            <>
+              <span className="invisible">Admin Sign In</span>
+              <span className="absolute inset-x-0 flex items-center justify-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-0" />
+                <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-150" />
+                <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-300" />
+              </span>
+            </>
+          ) : (
+            "Admin Sign In"
+          )}
+        </span>
       </button>
     </form>
   );

@@ -1039,11 +1039,11 @@ export default function AdminWorkspace({
   const renderDashboard = () => (
     <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <SummaryCard icon="👥" label="Total Users" value={metrics.userCount} tone="sky" />
-        <SummaryCard icon="📚" label="Total Modules" value={metrics.moduleCount} tone="slate" />
-        <SummaryCard icon="🏷️" label="Premium Modules Sold" value={metrics.approvedPayments} tone="amber" />
-        <SummaryCard icon="⏳" label="Pending Payments" value={metrics.pendingPayments} tone="amber" />
-        <SummaryCard icon="💰" label="Total Revenue" value={formatPeso(dashboardInsights.totalRevenue)} tone="emerald" />
+        <SummaryCard icon="👥" label="Total Users" value={metrics.userCount} tone="sky" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="📚" label="Total Modules" value={metrics.moduleCount} tone="slate" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="🏷️" label="Premium Modules Sold" value={metrics.approvedPayments} tone="amber" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="⏳" label="Pending Payments" value={metrics.pendingPayments} tone="amber" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="💰" label="Total Revenue" value={formatPeso(dashboardInsights.totalRevenue)} tone="emerald" isLoading={isLoadingAdminData} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
@@ -1063,17 +1063,19 @@ export default function AdminWorkspace({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
-        <QuickActionsCard actions={quickActions} />
+        <QuickActionsCard actions={quickActions} isLoading={isLoadingAdminData} />
         <SalesOverviewCard
           todayRevenue={dashboardInsights.todayRevenue}
           weekRevenue={dashboardInsights.weekRevenue}
           monthRevenue={dashboardInsights.monthRevenue}
           totalRevenue={dashboardInsights.totalRevenue}
+          isLoading={isLoadingAdminData}
         />
         <ModuleOverviewCard
           freeCount={dashboardInsights.freeModuleCount}
           premiumCount={dashboardInsights.premiumModuleCount}
           mostPurchased={dashboardInsights.mostPurchasedModuleName}
+          isLoading={isLoadingAdminData}
         />
       </div>
     </div>

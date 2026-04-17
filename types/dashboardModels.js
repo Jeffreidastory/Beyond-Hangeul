@@ -35,8 +35,8 @@ export const PAYMENT_METHODS = ["GCash", "GoTyme"];
 export const ADMIN_SECTIONS = [
   { key: "dashboard", label: "Dashboard" },
   { key: "modules", label: "Modules" },
-  { key: "path", label: "Path" },
   { key: "worksheets", label: "Worksheets" },
+  { key: "path", label: "Path" },
   { key: "users", label: "Users" },
   { key: "sales-report", label: "Sales Report" },
 ];
