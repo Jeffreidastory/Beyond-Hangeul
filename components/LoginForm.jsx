@@ -143,22 +143,20 @@ export default function LoginForm() {
         disabled={loading}
         className="relative inline-flex h-12 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#f6b21f] px-4 text-xl font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {loading && autoLogin && <span className="absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />}
+        {loading && <span className="absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />}
 
-        {!loading && <span className="relative z-10">Sign In</span>}
-
-        {loading && autoLogin ? (
-          <span className="relative z-10 inline-flex items-center justify-center">
-            <span className="invisible">Sign In</span>
-            <span className="absolute inset-x-0 flex items-center justify-center gap-1">
+        {!loading ? (
+          <span className="relative z-10">Sign In</span>
+        ) : (
+          <span className="relative z-10 inline-flex items-center gap-2">
+            <span>Logging in</span>
+            <span className="flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-0" />
               <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-150" />
               <span className="h-1.5 w-1.5 rounded-full bg-[#07223a] animate-bounce delay-300" />
             </span>
           </span>
-        ) : loading ? (
-          <span className="relative z-10">Signing In...</span>
-        ) : null}
+        )}
       </button>
 
       <p className="pt-3 text-center text-base text-white/85">

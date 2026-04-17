@@ -273,6 +273,33 @@ create policy "Admins can create notifications"
   to authenticated
   with check (public.is_admin());
 
+create table if not exists public.module_file_progress (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  module_id uuid references public.learning_modules(id) on delete set null,
+  file_identifier text not null,
+  is_opened boolean not null default false,
+  opened_at timestamptz not null default now(),
+  unique (user_id, module_id, file_identifier)
+);
+
+alter table public.module_file_progress enable row level security;
+
+drop policy if exists "Users can read own module file progress" on public.module_file_progress;
+create policy "Users can read own module file progress"
+  on public.module_file_progress
+  for select
+  to authenticated
+  using (user_id = auth.uid());
+
+drop policy if exists "Users can manage own module file progress" on public.module_file_progress;
+create policy "Users can manage own module file progress"
+  on public.module_file_progress
+  for all
+  to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
 create table if not exists public.payment_records (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,

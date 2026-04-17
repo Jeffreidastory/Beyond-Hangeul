@@ -1006,11 +1006,11 @@ export function getUserResourcesData(userId) {
     .filter((bookmark) => bookmark.userId === userId)
     .map((bookmark) => {
       if (bookmark.type === "module") {
-        const module = moduleMap.get(bookmark.itemId);
+        const savedModule = moduleMap.get(bookmark.itemId);
         return {
           ...bookmark,
-          title: module?.moduleName || "Module",
-          description: module?.topicTitle || "Saved module",
+          title: savedModule?.moduleName || "Module",
+          description: savedModule?.topicTitle || "Saved module",
         };
       }
 
@@ -1741,6 +1741,60 @@ export async function listContainersShared({ forceReload = false } = {}) {
   const rows = await fetchSharedContainersViaApi();
   adminCache.containers = rows;
   return rows;
+}
+
+export async function listModuleFileProgressShared(userId) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { data, error } = await supabase
+      .from("module_file_progress")
+      .select("module_id, file_identifier, is_opened, opened_at")
+      .eq("user_id", userId)
+      .order("opened_at", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return (data || []).map((row) => ({
+      moduleId: row.module_id,
+      fileIdentifier: row.file_identifier,
+      isOpened: Boolean(row.is_opened),
+      openedAt: row.opened_at,
+    }));
+  } catch (error) {
+    console.warn("Unable to load module file progress:", error);
+    return [];
+  }
+}
+
+export async function upsertModuleFileProgressShared({
+  userId,
+  moduleId,
+  fileIdentifier,
+  isOpened = true,
+}) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase
+      .from("module_file_progress")
+      .upsert(
+        {
+          user_id: userId,
+          module_id: moduleId,
+          file_identifier: fileIdentifier,
+          is_opened: isOpened,
+          opened_at: new Date().toISOString(),
+        },
+        { onConflict: ["user_id", "module_id", "file_identifier"] },
+      );
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    console.warn("Unable to save module file progress:", error);
+  }
 }
 
 async function callAdminContainerApi(method, body) {

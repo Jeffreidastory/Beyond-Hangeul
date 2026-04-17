@@ -13,7 +13,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Circle,
   CheckSquare,
   Compass,
   FileText,
@@ -38,11 +37,12 @@ import {
   deleteResourceNote,
   getUserLearningDataShared,
   getUserResourcesData,
-  removeResourceBookmark,
+  listModuleFileProgressShared,
   renameResourceFile,
   submitPaymentProofShared,
   syncUsers,
   toggleResourceBookmark,
+  upsertModuleFileProgressShared,
   upsertModuleProgressShared,
   upsertWorksheetProgressShared,
   updateResourceNote,
@@ -142,6 +142,7 @@ export default function UserDashboardView({
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [moduleFileProgress, setModuleFileProgress] = useState({});
 
   const setTab = useCallback((tabKey) => {
     setActiveTab(tabKey);
@@ -196,14 +197,18 @@ export default function UserDashboardView({
 
   const unreadCount = notifications.filter((notification) => !notification.isRead).length;
 
+  const getModuleFileIdentifier = (moduleId, index = 0) => {
+    return `${moduleId}:section-${index}`;
+  };
+
   const handleToggleNotifications = async () => {
     const willOpen = !notificationsOpen;
-    if (willOpen) {
-      await loadNotifications();
-      await markAllNotificationsReadShared(userId);
-      setNotifications((prevNotifications) => prevNotifications.map((item) => ({ ...item, isRead: true })));
-    }
     setNotificationsOpen(willOpen);
+    if (willOpen) {
+      await loadNotifications(true);
+      setNotifications((prevNotifications) => prevNotifications.map((item) => ({ ...item, isRead: true })));
+      void markAllNotificationsReadShared(userId);
+    }
   };
 
   const {
@@ -259,7 +264,7 @@ export default function UserDashboardView({
           break;
       }
     },
-    [setTab],
+    [setTab, setIsSearchOpen, setQuery],
   );
 
   useEffect(() => {
@@ -270,9 +275,11 @@ export default function UserDashboardView({
     }
   }, [query, setIsSearchOpen]);
 
+  const searchResultsLength = searchResults?.length ?? 0;
+
   useEffect(() => {
     setSearchHighlighted(0);
-  }, [searchResults]);
+  }, [searchResultsLength, setSearchHighlighted]);
 
   const highlightMatches = useCallback(
     (text, query) => {
@@ -290,7 +297,7 @@ export default function UserDashboardView({
         ),
       );
     },
-    [query],
+    [],
   );
 
   const renderModuleTopic = useCallback((topicTitle) => {
@@ -336,17 +343,40 @@ export default function UserDashboardView({
       console.warn("Unable to refresh shared dashboard data:", error);
       return null;
     }
-  }, [learningData.modules, userEmail, userId]);
+  }, [userEmail, userId]);
 
-  const loadNotifications = useCallback(async () => {
-    setNotificationsLoading(true);
+  const loadNotifications = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setNotificationsLoading(true);
+    }
     try {
       const nextNotifications = await listNotificationsShared(userId);
       setNotifications(nextNotifications);
     } catch (error) {
       console.warn("Unable to load notifications:", error);
     } finally {
-      setNotificationsLoading(false);
+      if (showLoading) {
+        setNotificationsLoading(false);
+      }
+    }
+  }, [userId]);
+
+  const loadModuleFileProgress = useCallback(async () => {
+    try {
+      const rows = await listModuleFileProgressShared(userId);
+      const progressMap = rows.reduce((acc, row) => {
+        const moduleProgress = acc[row.moduleId] || {};
+        moduleProgress[row.fileIdentifier] = {
+          isOpened: row.isOpened,
+          openedAt: row.openedAt,
+        };
+        acc[row.moduleId] = moduleProgress;
+        return acc;
+      }, {});
+      setModuleFileProgress(progressMap);
+    } catch (error) {
+      console.warn("Unable to load module file progress:", error);
+      setModuleFileProgress({});
     }
   }, [userId]);
 
@@ -357,7 +387,8 @@ export default function UserDashboardView({
   useEffect(() => {
     void loadDashboardData();
     void loadNotifications();
-  }, [loadDashboardData, loadNotifications]);
+    void loadModuleFileProgress();
+  }, [loadDashboardData, loadNotifications, loadModuleFileProgress]);
 
   useRealtimeTables({
     tables: [
@@ -370,6 +401,7 @@ export default function UserDashboardView({
       "user_module_access",
       "worksheet_progress",
       "module_progress",
+      "module_file_progress",
       "notifications",
     ],
     channelName: `user-dashboard-${userId}`,
@@ -381,7 +413,8 @@ export default function UserDashboardView({
       realtimeReloadTimerRef.current = setTimeout(() => {
         realtimeReloadTimerRef.current = null;
         void loadDashboardData();
-        void loadNotifications();
+        void loadModuleFileProgress();
+        void loadNotifications(false);
       }, 120);
     },
   });
@@ -733,11 +766,13 @@ export default function UserDashboardView({
         const response = await fetch(
           `/api/module-file-url?path=${encodeURIComponent(storagePath)}`,
         );
-        if (!response.ok)
-          throw new Error("Unable to create module file access URL.");
-        const payload = await response.json();
-        return payload?.signedUrl || resourceFileData;
-      } catch {
+        const data = await response.json();
+        if (!response.ok || !data?.url) {
+          return resourceFileData;
+        }
+        return data.url;
+      } catch (error) {
+        console.warn("Unable to get accessible module file URL:", error);
         return resourceFileData;
       }
     },
@@ -752,7 +787,7 @@ export default function UserDashboardView({
   }, []);
 
   const handleOpenModuleResource = useCallback(
-    async (module, attachment = null) => {
+    async (module, attachment = null, attachmentIndex = 0) => {
       const file = attachment || {
         fileData: module.resourceFileData,
         fileType: module.resourceFileType,
@@ -761,13 +796,37 @@ export default function UserDashboardView({
 
       if (!file?.fileData) return;
       const accessibleUrl = await getAccessibleModuleFileUrl(file.fileData);
+      if (!accessibleUrl) return;
 
-      window.open(accessibleUrl, "_blank", "noopener,noreferrer");
+      const fileIdentifier = getModuleFileIdentifier(module.id, attachmentIndex);
+      setModuleFileProgress((prev) => {
+        const moduleProgress = prev[module.id] || {};
+        if (moduleProgress[fileIdentifier]?.isOpened) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [module.id]: {
+            ...moduleProgress,
+            [fileIdentifier]: {
+              isOpened: true,
+              openedAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
 
-      const isPdf =
-        file.fileType === "application/pdf" ||
-        /\.pdf$/i.test(file.fileName || "");
-      if (!isPdf) return;
+      const openedWindow = window.open(accessibleUrl, "_blank", "noopener,noreferrer");
+      if (!openedWindow) {
+        console.warn("Module file popup was blocked or could not be opened.");
+      }
+
+      void upsertModuleFileProgressShared({
+        userId,
+        moduleId: module.id,
+        fileIdentifier,
+        isOpened: true,
+      });
 
       setModuleProgress((prev) => {
         const current = prev[module.id] || {};
@@ -1119,7 +1178,7 @@ export default function UserDashboardView({
                 : "border-white/10 bg-[#0f1d32]"
             }`}
           >
-            <div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-1 pointer-events-auto">
+            <div className="absolute right-3 top-3 z-30 flex items-center gap-2 pointer-events-auto">
               <span
                 className={`inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                   isPremium
@@ -1135,7 +1194,7 @@ export default function UserDashboardView({
               <button
                 type="button"
                 onClick={() => toggleBookmark("module", module.id)}
-                className={`mt-1 inline-flex min-w-max items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition pointer-events-auto ${
+                className={`inline-flex min-w-max items-center rounded-full border px-3 py-1.5 text-xs font-semibold transition pointer-events-auto ${
                   bookmarkedLookup.has(`module:${module.id}`)
                     ? "border-amber-400/50 bg-amber-400/15 text-amber-300"
                     : isLight
@@ -1148,7 +1207,6 @@ export default function UserDashboardView({
                 ) : (
                   <Bookmark size={12} />
                 )}
-                Save
               </button>
             </div>
 
@@ -1197,12 +1255,16 @@ export default function UserDashboardView({
                   <>
                     {hasAttachments && openModulePreviews[module.id] ? (
                       <div className={`mt-2 w-full rounded-2xl border p-0 text-sm shadow-lg ${isLight ? "border-slate-200 bg-slate-50 text-slate-800" : "border-white/10 bg-slate-950/90 text-slate-300"}`}>
+                        <div className={`flex w-full items-center gap-3 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                          <span>Section</span>
+                          <span className="ml-auto">Status</span>
+                        </div>
                         {attachments.map((attachment, index) => (
                           <button
-                            key={`${attachment.fileName || "file"}-${index}`}
+                            key={`${attachment.fileName || attachment.fileUrl || attachment.id || "file"}-${index}`}
                             type="button"
                             onClick={() =>
-                              void handleOpenModuleResource(module, attachment)
+                              void handleOpenModuleResource(module, attachment, index)
                             }
                             className={`flex w-full items-center gap-3 px-3 py-3 text-left transition ${isLight ? "text-slate-900 hover:bg-slate-100" : "text-slate-100 hover:bg-white/5"} ${
                               index > 0
@@ -1217,11 +1279,10 @@ export default function UserDashboardView({
                               className="flex-shrink-0 text-amber-300"
                             />
                             <span className="min-w-0 truncate text-sm">
-                              {attachment.fileName || `Section ${index + 1}`}
+                              {attachment.fileName || attachment.title || `Section ${index + 1}`}
                             </span>
-                            <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-slate-400">
-                              Open
-                              <ChevronRight size={14} />
+                            <span className={`ml-auto text-xs font-semibold uppercase tracking-wide ${moduleFileProgress[module.id]?.[getModuleFileIdentifier(module.id, index)]?.isOpened ? "text-emerald-400" : "text-slate-400"}`}>
+                              {moduleFileProgress[module.id]?.[getModuleFileIdentifier(module.id, index)]?.isOpened ? "Completed" : "Pending"}
                             </span>
                           </button>
                         ))}
@@ -1865,11 +1926,11 @@ export default function UserDashboardView({
               </button>
 
               {notificationsOpen && (
-                <div className="absolute right-0 z-40 mt-2 w-80 max-h-96 overflow-hidden rounded-3xl border border-white/10 bg-[#0f1d32] shadow-2xl">
-                  <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                <div className={`absolute right-0 z-40 mt-2 w-80 max-h-96 overflow-hidden rounded-3xl shadow-2xl ${isLight ? "border border-slate-200 bg-white" : "border border-white/10 bg-[#0f1d32]"}`}>
+                  <div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${isLight ? "border-slate-200" : "border-white/10"}`}>
                     <div>
-                      <p className="text-sm font-semibold text-white">Notifications</p>
-                      <p className="text-xs text-slate-400">{unreadCount} unread</p>
+                      <p className={`text-sm font-semibold ${isLight ? "text-slate-950" : "text-white"}`}>Notifications</p>
+                      <p className={`text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>{unreadCount} unread</p>
                     </div>
                     <button
                       type="button"
@@ -1877,7 +1938,7 @@ export default function UserDashboardView({
                         await markAllNotificationsReadShared(userId);
                         setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
                       }}
-                      className="text-xs text-slate-400 transition hover:text-white"
+                      className={`text-xs transition ${isLight ? "text-slate-600 hover:text-slate-900" : "text-slate-400 hover:text-white"}`}
                     >
                       Mark all read
                     </button>
@@ -1885,9 +1946,9 @@ export default function UserDashboardView({
 
                   <div className="max-h-80 overflow-y-auto">
                     {notificationsLoading ? (
-                      <div className="px-4 py-6 text-sm text-slate-400">Loading notifications...</div>
+                      <div className={`px-4 py-6 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>Loading notifications...</div>
                     ) : notifications.length === 0 ? (
-                      <div className="px-4 py-6 text-sm text-slate-400">No notifications yet.</div>
+                      <div className={`px-4 py-6 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>No notifications yet.</div>
                     ) : (
                       <div className="space-y-2 px-3 py-3">
                         {notifications.map((notification) => (
@@ -1900,14 +1961,14 @@ export default function UserDashboardView({
                                 setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
                               }
                             }}
-                            className={`w-full rounded-2xl border px-3 py-3 text-left transition ${notification.isRead ? "border-white/10 bg-white/5 text-slate-300 hover:border-white/20" : "border-amber-300/20 bg-white/10 text-white shadow-sm shadow-amber-500/10 hover:border-amber-300"}`}
+                            className={`w-full rounded-2xl border px-3 py-3 text-left transition ${notification.isRead ? (isLight ? "border-slate-200 bg-slate-100 text-slate-700 hover:border-slate-300" : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20") : (isLight ? "border-amber-200 bg-amber-50 text-slate-900 shadow-sm shadow-amber-100 hover:border-amber-300" : "border-amber-300/20 bg-white/10 text-white shadow-sm shadow-amber-500/10 hover:border-amber-300")}`}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-semibold">{notification.title}</span>
+                              <span className={`text-sm font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>{notification.title}</span>
                               {!notification.isRead && <span className="h-2 w-2 rounded-full bg-amber-400" />}
                             </div>
-                            <p className="mt-1 text-xs text-slate-400">{notification.message}</p>
-                            <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">{formatRelativeTime(notification.createdAt)}</p>
+                            <p className={`mt-1 text-xs ${isLight ? "text-slate-600" : "text-slate-400"}`}>{notification.message}</p>
+                            <p className={`mt-2 text-[11px] uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>{formatRelativeTime(notification.createdAt)}</p>
                           </button>
                         ))}
                       </div>
