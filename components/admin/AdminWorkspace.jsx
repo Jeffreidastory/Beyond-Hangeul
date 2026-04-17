@@ -125,6 +125,7 @@ export default function AdminWorkspace({
   const [moduleForm, setModuleForm] = useState(defaultModule);
   const [worksheetForm, setWorksheetForm] = useState(defaultWorksheet);
   const [editingModule, setEditingModule] = useState(null);
+  const [editingModuleLoadingId, setEditingModuleLoadingId] = useState(null);
   const [editingWorksheetId, setEditingWorksheetId] = useState("");
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [selectedUserAccount, setSelectedUserAccount] = useState(null);
@@ -715,7 +716,7 @@ export default function AdminWorkspace({
     }
   };
 
-  const handleModuleFileUpload = async (file, isEdit = false) => {
+  const handleModuleFileUpload = async (file, isEdit = false, replaceIndex = null) => {
     if (!file) return;
     if (isEdit) {
       setIsEditFileUploading(true);
@@ -758,18 +759,27 @@ export default function AdminWorkspace({
       return;
     }
 
+    const nextFile = {
+      fileName: file.name,
+      fileType: file.type || "application/octet-stream",
+      fileData: uploadedFileUrl,
+    };
+
     if (isEdit) {
-      setEditingModule((prev) => ({
-        ...prev,
-        resourceFiles: [
-          ...(Array.isArray(prev.resourceFiles) ? prev.resourceFiles : []),
-          {
-            fileName: file.name,
-            fileType: file.type || "application/octet-stream",
-            fileData: uploadedFileUrl,
-          },
-        ],
-      }));
+      setEditingModule((prev) => {
+        const existingFiles = Array.isArray(prev.resourceFiles) ? [...prev.resourceFiles] : [];
+
+        if (replaceIndex !== null && replaceIndex >= 0 && replaceIndex < existingFiles.length) {
+          existingFiles[replaceIndex] = nextFile;
+        } else {
+          existingFiles.push(nextFile);
+        }
+
+        return {
+          ...prev,
+          resourceFiles: existingFiles,
+        };
+      });
       setStatusMessage("Module file uploaded to storage.");
       setIsEditFileUploading(false);
       return;
@@ -782,11 +792,7 @@ export default function AdminWorkspace({
       resourceFileData: uploadedFileUrl,
       resourceFiles: [
         ...(Array.isArray(prev.resourceFiles) ? prev.resourceFiles : []),
-        {
-          fileName: file.name,
-          fileType: file.type || "application/octet-stream",
-          fileData: uploadedFileUrl,
-        },
+        nextFile,
       ],
     }));
     setModuleFieldErrors((prev) => ({ ...prev, resourceFile: false }));
@@ -796,27 +802,32 @@ export default function AdminWorkspace({
 
   const beginModuleEdit = async (module) => {
     if (!module) return;
+    setEditingModuleLoadingId(module.id);
 
-    if ((module.status || MODULE_STATUS.ACTIVE) !== MODULE_STATUS.DRAFT) {
-      await updateModuleShared(module.id, { status: MODULE_STATUS.DRAFT });
-      await refreshAll();
-      setStatusMessage("Module set to inactive while editing.");
+    try {
+      if ((module.status || MODULE_STATUS.ACTIVE) !== MODULE_STATUS.DRAFT) {
+        await updateModuleShared(module.id, { status: MODULE_STATUS.DRAFT });
+        await refreshAll();
+        setStatusMessage("Module set to inactive while editing.");
+      }
+
+      const resourceFiles = Array.isArray(module.resourceFiles)
+        ? module.resourceFiles
+        : module.resourceFileData
+        ? [
+            {
+              fileName: module.resourceFileName || "",
+              fileType: module.resourceFileType || "",
+              fileData: module.resourceFileData,
+            },
+          ]
+        : [];
+
+      setAutoReactivateAfterEdit(true);
+      setEditingModule({ ...module, status: MODULE_STATUS.DRAFT, resourceFiles });
+    } finally {
+      setEditingModuleLoadingId(null);
     }
-
-    const resourceFiles = Array.isArray(module.resourceFiles)
-      ? module.resourceFiles
-      : module.resourceFileData
-      ? [
-          {
-            fileName: module.resourceFileName || "",
-            fileType: module.resourceFileType || "",
-            fileData: module.resourceFileData,
-          },
-        ]
-      : [];
-
-    setAutoReactivateAfterEdit(true);
-    setEditingModule({ ...module, status: MODULE_STATUS.DRAFT, resourceFiles });
   };
 
   const saveNewModule = async (event) => {
@@ -1244,11 +1255,19 @@ export default function AdminWorkspace({
                           <button
                             type="button"
                             onClick={() => beginModuleEdit(module)}
-                            className="inline-flex items-center justify-center rounded-lg border border-white/20 p-2 text-slate-200 hover:bg-white/10"
+                            disabled={editingModuleLoadingId === module.id}
+                            className={`inline-flex items-center justify-center rounded-lg border border-white/20 p-2 text-slate-200 transition ${editingModuleLoadingId === module.id ? "cursor-wait bg-white/10" : "hover:bg-white/10"}`}
                             aria-label={`Edit module ${module.moduleName}`}
                             title="Edit module"
                           >
-                            <Pencil size={14} />
+                            {editingModuleLoadingId === module.id ? (
+                              <svg className="animate-spin h-4 w-4 text-slate-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                              </svg>
+                            ) : (
+                              <Pencil size={14} />
+                            )}
                           </button>
                           <button
                             type="button"
@@ -2162,19 +2181,24 @@ export default function AdminWorkspace({
               {Array.isArray(editingModule.resourceFiles) && editingModule.resourceFiles.length > 0 ? (
                 <div className="md:col-span-2 mt-1 rounded-lg border border-white/10 bg-[#0f1d32] px-3 py-2 text-xs text-emerald-300">
                   <span className="block font-semibold">Attached files</span>
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2 space-y-2">
                     {editingModule.resourceFiles.map((file, index) => (
-                      <div key={index} className="truncate">
-                        {file.fileName || `File ${index + 1}`}
+                      <div key={index} className="flex items-center justify-between gap-3 rounded-md bg-[#081826] px-3 py-2">
+                        <span className="truncate">{file.fileName || `File ${index + 1}`}</span>
+                        <label className="inline-flex cursor-pointer items-center rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-amber-300 transition hover:bg-white/10">
+                          Replace
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            disabled={isEditFileUploading}
+                            onChange={(event) => handleModuleFileUpload(event.target.files?.[0], true, index)}
+                          />
+                        </label>
                       </div>
                     ))}
                   </div>
                 </div>
-              ) : null}
-              {statusMessage ? (
-                <p className="md:col-span-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                  {statusMessage}
-                </p>
               ) : null}
             </div>
             <div className="mt-4 flex justify-end gap-2">
