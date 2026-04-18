@@ -1,3 +1,5 @@
+"use client";
+
 import { useTheme } from "@/components/theme/ThemeProvider";
 import AuthNavbar from "@/components/AuthNavbar";
 import Image from "next/image";
