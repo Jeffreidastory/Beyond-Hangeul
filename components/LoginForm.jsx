@@ -13,7 +13,6 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [autoLogin, setAutoLogin] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -23,43 +22,20 @@ export default function LoginForm() {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session?.user) {
-        return;
+      if (session?.user) {
+        await router.replace("/dashboard");
       }
-
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", session.user.id).maybeSingle();
-      const isAdmin = profile?.role === "admin";
-
-      setAutoLogin(!isAdmin);
     };
 
     void checkSession();
-  }, []);
+  }, [router]);
 
   const onSubmit = async (event) => {
     event.preventDefault();
     setError("");
-
-    const supabase = getSupabaseBrowserClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    const hasSession = Boolean(session?.user);
-    const profileResult = session?.user
-      ? await supabase.from("profiles").select("role").eq("id", session.user.id).maybeSingle()
-      : { data: { profile: null } };
-    const isAdminSession = profileResult.data?.role === "admin";
-
-    setAutoLogin(hasSession && !isAdminSession);
     setLoading(true);
 
-    if (hasSession && !isAdminSession) {
-      await new Promise((resolve) => setTimeout(resolve, 40));
-      await router.push("/dashboard");
-      return;
-    }
-
+    const supabase = getSupabaseBrowserClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (signInError) {
@@ -68,7 +44,7 @@ export default function LoginForm() {
       return;
     }
 
-    await router.push("/dashboard");
+    await router.replace("/dashboard");
   };
 
   return (

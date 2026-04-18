@@ -122,8 +122,7 @@ export default function RegisterForm() {
       }
 
       if (data.session) {
-        router.push("/dashboard");
-        router.refresh();
+        await router.replace("/dashboard");
         return;
       }
 
