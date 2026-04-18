@@ -204,7 +204,6 @@ export default function UserDashboardView({
   const [modulePreviewUrls, setModulePreviewUrls] = useState({});
   const [modulePreviewLoading, setModulePreviewLoading] = useState({});
   const [calendarMatrix, setCalendarMatrix] = useState(null);
-  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const realtimeReloadTimerRef = useRef(null);
 
   const goalItems = useMemo(
@@ -413,26 +412,10 @@ export default function UserDashboardView({
   }, [refreshLearningData]);
 
   useEffect(() => {
-    let isMounted = true;
-    const initialize = async () => {
-      setIsDashboardLoading(true);
-      try {
-        await loadDashboardData();
-      } finally {
-        if (isMounted) {
-          setIsDashboardLoading(false);
-        }
-      }
-    };
-
-    void initialize();
+    void loadDashboardData();
     void loadNotifications();
     void loadModuleFileProgress();
     loadPaymentStoreState();
-
-    return () => {
-      isMounted = false;
-    };
   }, [loadDashboardData, loadNotifications, loadModuleFileProgress, loadPaymentStoreState]);
 
   useEffect(() => {
@@ -1264,13 +1247,13 @@ export default function UserDashboardView({
                 </div>
 
                 {hasAttachments && !module.isInactive && !module.isLocked ? (
-                  <div className="flex-shrink-0 text-right">
+                  <div className="flex-shrink-0 min-w-0 text-right">
                     <button
                       type="button"
                       onClick={() => void toggleModulePreview(module)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm transition ${isLight ? "border-slate-200 bg-slate-100 text-slate-900 hover:bg-slate-200" : "border-slate-700 bg-slate-950/90 text-slate-100 hover:bg-slate-800"}`}
+                      className={`inline-flex max-w-full items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm transition ${isLight ? "border-slate-200 bg-slate-100 text-slate-900 hover:bg-slate-200" : "border-slate-700 bg-slate-950/90 text-slate-100 hover:bg-slate-800"}`}
                     >
-                      <span>{sectionLabel}</span>
+                      <span className="max-w-full truncate">{sectionLabel}</span>
                       <ChevronDown
                         size={14}
                         className={`transition-transform ${openModulePreviews[module.id] ? "rotate-180" : "rotate-0"}`}
@@ -1288,7 +1271,7 @@ export default function UserDashboardView({
                 ) : !module.isLocked ? (
                   <>
                     {hasAttachments && openModulePreviews[module.id] ? (
-                      <div className={`mt-2 w-full rounded-2xl border p-0 text-sm shadow-lg ${isLight ? "border-slate-200 bg-slate-50 text-slate-800" : "border-white/10 bg-slate-950/90 text-slate-300"}`}>
+                      <div className={`mt-2 w-full max-w-full overflow-hidden rounded-2xl border p-0 text-sm shadow-lg ${isLight ? "border-slate-200 bg-slate-50 text-slate-800" : "border-white/10 bg-slate-950/90 text-slate-300"}`}>
                         <div className={`flex w-full items-center gap-3 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>
                           <span>Section</span>
                           <span className="ml-auto">Status</span>
@@ -1300,7 +1283,7 @@ export default function UserDashboardView({
                             onClick={() =>
                               void handleOpenModuleResource(module, attachment, index)
                             }
-                            className={`flex w-full items-center gap-3 px-3 py-3 text-left transition ${isLight ? "text-slate-900 hover:bg-slate-100" : "text-slate-100 hover:bg-white/5"} ${
+                            className={`flex w-full flex-col gap-3 px-3 py-3 text-left transition sm:flex-row sm:items-center ${isLight ? "text-slate-900 hover:bg-slate-100" : "text-slate-100 hover:bg-white/5"} ${
                               index > 0
                                 ? isLight
                                   ? "border-t border-slate-200"
@@ -1308,14 +1291,16 @@ export default function UserDashboardView({
                                 : ""
                             }`}
                           >
-                            <FileText
-                              size={16}
-                              className="flex-shrink-0 text-amber-300"
-                            />
-                            <span className="min-w-0 truncate text-sm">
-                              {attachment.fileName || attachment.title || `Section ${index + 1}`}
-                            </span>
-                            <span className={`ml-auto text-xs font-semibold uppercase tracking-wide ${moduleFileProgress[module.id]?.[getModuleFileIdentifier(module.id, index)]?.isOpened ? "text-emerald-400" : "text-slate-400"}`}>
+                            <div className="flex w-full items-center gap-3 min-w-0">
+                              <FileText
+                                size={16}
+                                className="flex-shrink-0 text-amber-300"
+                              />
+                              <span className="min-w-0 break-words truncate text-sm">
+                                {attachment.fileName || attachment.title || `Section ${index + 1}`}
+                              </span>
+                            </div>
+                            <span className={`ml-0 self-start text-xs font-semibold uppercase tracking-wide text-left sm:ml-auto sm:self-center ${moduleFileProgress[module.id]?.[getModuleFileIdentifier(module.id, index)]?.isOpened ? "text-emerald-400" : "text-slate-400"}`}>
                               {moduleFileProgress[module.id]?.[getModuleFileIdentifier(module.id, index)]?.isOpened ? "Completed" : "Pending"}
                             </span>
                           </button>
@@ -1372,34 +1357,6 @@ export default function UserDashboardView({
   };
 
   const renderMainSection = () => {
-    if (isDashboardLoading) {
-      return (
-        <main
-          className={`space-y-5 rounded-2xl p-5 lg:p-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}
-        >
-          <div className={`space-y-4 rounded-2xl border p-5 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
-            <div className={`h-7 w-3/5 rounded-2xl ${isLight ? "bg-slate-200" : "bg-slate-700"} animate-pulse`} />
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {[...Array(3)].map((_, index) => (
-                <div
-                  key={index}
-                  className={`h-40 rounded-3xl ${isLight ? "bg-slate-200" : "bg-slate-700"} animate-pulse`}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {[...Array(2)].map((_, index) => (
-              <div
-                key={index}
-                className={`h-56 rounded-3xl border ${isLight ? "border-slate-200 bg-slate-100" : "border-white/10 bg-[#0f172a]"} animate-pulse`}
-              />
-            ))}
-          </div>
-        </main>
-      );
-    }
-
     if (activeTab === "modules") {
       return (
         <main
