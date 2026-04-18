@@ -171,14 +171,13 @@ export default function UserDashboardView({
       containers: [],
     },
   );
-  const [resourcesData, setResourcesData] = useState({
-    files: [],
-    notes: [],
-    bookmarks: [],
-    references: [],
-  });
+  const [resourcesData, setResourcesData] = useState(() =>
+    getUserResourcesData(userId),
+  );
   const [resourcesNotice, setResourcesNotice] = useState("");
-  const [goalText, setGoalText] = useState("");
+  const [goalText, setGoalText] = useState(() =>
+    window.localStorage.getItem(`bh-goal-${userId}`) || "",
+  );
   const [goalSaved, setGoalSaved] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentPlans, setPaymentPlans] = useState([]);
@@ -195,12 +194,17 @@ export default function UserDashboardView({
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedWorksheetId, setSelectedWorksheetId] = useState("");
   const [worksheetMode, setWorksheetMode] = useState("writing");
-  const [moduleProgress, setModuleProgress] = useState({});
-  const [worksheetScores, setWorksheetScores] = useState({});
+  const [moduleProgress, setModuleProgress] = useState(
+    initialLearningData?.moduleProgress || {},
+  );
+  const [worksheetScores, setWorksheetScores] = useState(
+    initialLearningData?.worksheetScores || {},
+  );
   const [openModulePreviews, setOpenModulePreviews] = useState({});
   const [modulePreviewUrls, setModulePreviewUrls] = useState({});
   const [modulePreviewLoading, setModulePreviewLoading] = useState({});
   const [calendarMatrix, setCalendarMatrix] = useState(null);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
   const realtimeReloadTimerRef = useRef(null);
 
   const goalItems = useMemo(
@@ -409,10 +413,26 @@ export default function UserDashboardView({
   }, [refreshLearningData]);
 
   useEffect(() => {
-    void loadDashboardData();
+    let isMounted = true;
+    const initialize = async () => {
+      setIsDashboardLoading(true);
+      try {
+        await loadDashboardData();
+      } finally {
+        if (isMounted) {
+          setIsDashboardLoading(false);
+        }
+      }
+    };
+
+    void initialize();
     void loadNotifications();
     void loadModuleFileProgress();
     loadPaymentStoreState();
+
+    return () => {
+      isMounted = false;
+    };
   }, [loadDashboardData, loadNotifications, loadModuleFileProgress, loadPaymentStoreState]);
 
   useEffect(() => {
@@ -647,7 +667,7 @@ export default function UserDashboardView({
   }, [activeTab, searchParams]);
 
   useEffect(() => {
-    if (activeTab !== "worksheets") return;
+    if (activeTab === "worksheets") return;
     setSelectedWorksheetId("");
   }, [activeTab]);
 
@@ -708,6 +728,44 @@ export default function UserDashboardView({
       ),
     [learningData.worksheets],
   );
+
+  const moduleGroups = useMemo(() => {
+    const moduleGroupsMap = new Map();
+
+    (learningData.containers || []).forEach((container) => {
+      moduleGroupsMap.set(container.id, {
+        id: container.id,
+        title: container.title,
+        subtitle: container.subtitle || "",
+        modules: [],
+        createdAt: container.createdAt || "",
+      });
+    });
+
+    allModules.forEach((module) => {
+      if (!module.containerId) return;
+
+      let group = moduleGroupsMap.get(module.containerId);
+      if (!group) {
+        group = {
+          id: module.containerId,
+          title: module.containerTitle || "Untitled Container",
+          subtitle: module.containerSubtitle || "",
+          modules: [],
+          createdAt: "",
+        };
+        moduleGroupsMap.set(group.id, group);
+      }
+
+      group.modules.push(module);
+    });
+
+    return Array.from(moduleGroupsMap.values()).sort(
+      (a, b) =>
+        new Date(a.createdAt || 0).getTime() -
+        new Date(b.createdAt || 0).getTime(),
+    );
+  }, [learningData.containers, allModules]);
 
   const homeAverageScore = useMemo(() => {
     const values = Object.values(worksheetScores || {}).filter(
@@ -1117,42 +1175,7 @@ export default function UserDashboardView({
   }, [activeTab, requestedPaymentModuleId]);
 
   const renderModulesGrouped = () => {
-    const moduleGroupsMap = new Map();
-
-    (learningData.containers || []).forEach((container) => {
-      moduleGroupsMap.set(container.id, {
-        id: container.id,
-        title: container.title,
-        subtitle: container.subtitle || "",
-        modules: [],
-        createdAt: container.createdAt || "",
-      });
-    });
-
-    allModules.forEach((module) => {
-      if (!module.containerId) return;
-
-      let group = moduleGroupsMap.get(module.containerId);
-      if (!group) {
-        group = {
-          id: module.containerId,
-          title: module.containerTitle || "Untitled Container",
-          subtitle: module.containerSubtitle || "",
-          modules: [],
-          createdAt: "",
-        };
-        moduleGroupsMap.set(group.id, group);
-      }
-
-      group.modules.push(module);
-    });
-
-    const moduleGroups = Array.from(moduleGroupsMap.values()).sort(
-      (a, b) =>
-        new Date(a.createdAt || 0).getTime() -
-        new Date(b.createdAt || 0).getTime(),
-    );
-
+    const moduleGroupsList = moduleGroups;
     const renderModuleCard = (module) => {
       const isPremium = module.type === "paid";
       const moduleScore = moduleProgress[module.id] || null;
@@ -1308,17 +1331,12 @@ export default function UserDashboardView({
       );
     };
 
-    const hasModuleGroups = moduleGroups.length > 0;
-    moduleGroups.sort(
-      (a, b) =>
-        new Date(a.createdAt || 0).getTime() -
-        new Date(b.createdAt || 0).getTime(),
-    );
+    const hasModuleGroups = moduleGroupsList.length > 0;
 
     if (hasModuleGroups) {
       return (
         <div className="space-y-1">
-          {moduleGroups.map((group) => (
+          {moduleGroupsList.map((group) => (
             <div
               key={group.id}
               className={`rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#0f172a]"}`}
@@ -1354,6 +1372,34 @@ export default function UserDashboardView({
   };
 
   const renderMainSection = () => {
+    if (isDashboardLoading) {
+      return (
+        <main
+          className={`space-y-5 rounded-2xl p-5 lg:p-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}
+        >
+          <div className={`space-y-4 rounded-2xl border p-5 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
+            <div className={`h-7 w-3/5 rounded-2xl ${isLight ? "bg-slate-200" : "bg-slate-700"} animate-pulse`} />
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {[...Array(3)].map((_, index) => (
+                <div
+                  key={index}
+                  className={`h-40 rounded-3xl ${isLight ? "bg-slate-200" : "bg-slate-700"} animate-pulse`}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {[...Array(2)].map((_, index) => (
+              <div
+                key={index}
+                className={`h-56 rounded-3xl border ${isLight ? "border-slate-200 bg-slate-100" : "border-white/10 bg-[#0f172a]"} animate-pulse`}
+              />
+            ))}
+          </div>
+        </main>
+      );
+    }
+
     if (activeTab === "modules") {
       return (
         <main
