@@ -14,7 +14,6 @@ import {
 } from "@/services/paymentStore";
 import {
   approvePaymentAndGrantAccessShared,
-  clearOnlinePaymentDataShared,
   listPaymentsShared,
   updatePaymentRequestStatusShared,
 } from "@/services/dashboardDataService";
@@ -52,7 +51,6 @@ export default function PaymentManagementPanel() {
   const [methodForm, setMethodForm] = useState({ name: "", accountName: "", accountNumber: "", qrCode: "", type: PAYMENT_METHOD_TYPES.E_WALLET });
   const [editingMethodId, setEditingMethodId] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
-  const [isClearingPayments, setIsClearingPayments] = useState(false);
 
   useEffect(() => {
     const loadRequests = async () => {
@@ -178,27 +176,6 @@ export default function PaymentManagementPanel() {
     cancelEditMethod();
   };
 
-  const handleClearPaymentData = async () => {
-    if (!window.confirm("This will delete all online payment records and premium paid access. Continue?")) {
-      return;
-    }
-
-    setIsClearingPayments(true);
-    setStatusMessage("Clearing online payment records...");
-
-    try {
-      await clearOnlinePaymentDataShared();
-      const payments = await listPaymentsShared({ forceReload: true });
-      setRequests(payments);
-      setStatusMessage("Online payment records cleared.");
-    } catch (error) {
-      console.error("Unable to clear online payment records:", error);
-      setStatusMessage("Unable to clear online payment records. Check the console for details.");
-    } finally {
-      setIsClearingPayments(false);
-    }
-  };
-
   const removeMethod = (methodId) => {
     deletePaymentMethod(methodId);
     setMethods(getPaymentMethods());
@@ -247,14 +224,6 @@ export default function PaymentManagementPanel() {
                 {item.label}
               </button>
             ))}
-            <button
-              type="button"
-              onClick={handleClearPaymentData}
-              disabled={isClearingPayments}
-              className="rounded-full border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isClearingPayments ? "Clearing..." : "Clear payment records"}
-            </button>
           </div>
         </div>
 
