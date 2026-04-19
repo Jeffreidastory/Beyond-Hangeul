@@ -160,36 +160,48 @@ function normalizeSubscription(subscription) {
   return normalizeLegacyPayment(normalized);
 }
 
-function isLegacyPlanId(planId) {
-  return LEGACY_PLAN_IDS.has(String(planId || "").toLowerCase());
-}
+const PAYMENT_STORE_KEYS = {
+  plans: "payment:plans",
+  methods: "payment:methods",
+  requests: "payment:requests",
+};
 
-function cleanLegacyRequests(requests = []) {
-  const cleaned = (requests || []).filter((request) => !isLegacyPlanId(request.planId));
-  if (cleaned.length !== (requests || []).length) {
-    savePaymentRequests(cleaned);
-  }
-  return cleaned;
-}
-
-function cleanLegacySubscription(userId, subscription) {
-  if (!subscription || !isLegacyPlanId(subscription.planId)) {
-    return subscription;
-  }
-
-  const cleared = normalizeSubscription(null);
-  userSubscriptions.set(userId, cleared);
-  return cleared;
+function isBrowser() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
 function loadList(key, fallback) {
-  return fallback;
+  if (!isBrowser()) {
+    return fallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return fallback;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function persistList(key, value) {
+  if (!isBrowser()) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore storage errors
+  }
 }
 
 export function getPaymentPlans() {
-  if (!paymentPlans || !paymentPlans.length) {
-    paymentPlans = [...DEFAULT_PLANS];
-  }
+  const storedPlans = loadList(PAYMENT_STORE_KEYS.plans, paymentPlans);
+  paymentPlans = storedPlans.length ? storedPlans : [...DEFAULT_PLANS];
 
   const normalized = paymentPlans.map(normalizePlan);
   const lifetimeOnly = normalized
@@ -219,27 +231,31 @@ export function getPaymentPlans() {
 
 export function savePaymentPlans(plans = []) {
   paymentPlans = (plans || []).map(normalizePlan);
+  persistList(PAYMENT_STORE_KEYS.plans, paymentPlans);
   return paymentPlans;
 }
 
 export function getPaymentMethods() {
-  if (!paymentMethods || !paymentMethods.length) {
-    paymentMethods = [...DEFAULT_METHODS];
-  }
+  const storedMethods = loadList(PAYMENT_STORE_KEYS.methods, paymentMethods);
+  paymentMethods = storedMethods.length ? storedMethods : [...DEFAULT_METHODS];
   return paymentMethods.map(normalizeMethod);
 }
 
 export function savePaymentMethods(methods = []) {
   paymentMethods = (methods || []).map(normalizeMethod);
+  persistList(PAYMENT_STORE_KEYS.methods, paymentMethods);
   return paymentMethods;
 }
 
 export function getPaymentRequests() {
+  const storedRequests = loadList(PAYMENT_STORE_KEYS.requests, paymentRequests);
+  paymentRequests = storedRequests.length ? storedRequests : [];
   return (paymentRequests || []).map(normalizeRequest).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 }
 
 export function savePaymentRequests(requests = []) {
   paymentRequests = (requests || []).map(normalizeRequest);
+  persistList(PAYMENT_STORE_KEYS.requests, paymentRequests);
   return paymentRequests;
 }
 
