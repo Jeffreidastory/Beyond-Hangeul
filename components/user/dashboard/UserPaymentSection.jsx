@@ -1,7 +1,15 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo } from "react";
 import { PAYMENT_STATUS } from "@/types/dashboardModels";
+import gcashQr from "@/app/images/gcash-qr.png";
+import gotymeQr from "@/app/images/gotyme-qr.jpg";
+
+const DEFAULT_QR_CODES = {
+  gcash: gcashQr,
+  gotyme: gotymeQr,
+};
 
 export default function UserPaymentSection({
   plans,
@@ -37,6 +45,8 @@ export default function UserPaymentSection({
     () => methods.find((method) => method.id === selectedMethodId) || methods.find((method) => method.id === "gcash") || methods[0] || null,
     [methods, selectedMethodId],
   );
+
+  const displayQrCode = selectedMethod?.qrCode || DEFAULT_QR_CODES[selectedMethod?.id] || null;
 
   const rawStatus = subscription?.status || latestRequest?.status || "inactive";
   const status = rawStatus === PAYMENT_STATUS.APPROVED ? "active" : rawStatus;
@@ -179,15 +189,15 @@ export default function UserPaymentSection({
               <p className="mt-2 text-lg font-semibold text-white">{selectedMethod?.accountNumber || "No number configured"}</p>
               <p className="mt-1 text-sm text-slate-400">{selectedMethod?.accountName || "No account name"}</p>
               <div className="mt-4">
-                {selectedMethod?.qrCode ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={selectedMethod.qrCode}
-                      alt={`${selectedMethod.name} QR code`}
-                      className="h-52 w-full rounded-3xl border border-slate-700 object-contain"
+                {displayQrCode ? (
+                  <div className="relative h-52 w-full overflow-hidden rounded-3xl border border-slate-700">
+                    <Image
+                      src={displayQrCode}
+                      alt={`${selectedMethod?.name || "Payment"} QR code`}
+                      fill
+                      className="rounded-3xl object-contain"
                     />
-                  </>
+                  </div>
                 ) : (
                   <div className="rounded-3xl border border-dashed border-slate-500 p-10 text-center text-sm text-slate-500">
                     QR code not uploaded yet for this method.

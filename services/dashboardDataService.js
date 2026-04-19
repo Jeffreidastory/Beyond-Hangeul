@@ -2326,8 +2326,16 @@ export async function getUserLearningDataShared(userId) {
     );
 
     const subscription = getUserSubscription(userId);
+    const approvedPayments = payments.filter((payment) => payment.status === PAYMENT_STATUS.APPROVED);
+    const latestApprovedPayment = approvedPayments
+      .sort(
+        (left, right) =>
+          new Date(right.approvedAt || right.submittedAt || 0).getTime() -
+          new Date(left.approvedAt || left.submittedAt || 0).getTime(),
+      )[0] || null;
     const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
-    const premiumAccessAllowed = hasActiveSubscription;
+    const hasApprovedPayment = Boolean(latestApprovedPayment);
+    const premiumAccessAllowed = hasActiveSubscription || hasApprovedPayment;
 
     const modulesWithAccess = modules.map((module) => {
       const isFree = module.type === MODULE_TYPE.FREE;

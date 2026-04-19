@@ -23,12 +23,13 @@ const DEFAULT_METHODS = [
     qrCode: "",
   },
   {
-    id: "maya",
-    name: "Maya",
+    id: "gotyme",
+    name: "GoTyme",
     accountName: "Beyond Hangul",
     accountNumber: "09171234567",
     type: "e-wallet",
-    label: "Maya",
+    label: "GoTyme",
+    qrCode: "",
   },
   {
     id: "bdo",

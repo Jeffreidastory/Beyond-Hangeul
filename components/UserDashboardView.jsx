@@ -316,6 +316,15 @@ export default function UserDashboardView({
     [],
   );
 
+  const isActiveSubscription = useCallback((subscription) => {
+    if (!subscription) return false;
+    const status = subscription.status;
+    const isActiveOrApproved = status === "active" || status === PAYMENT_STATUS.APPROVED;
+    if (!isActiveOrApproved) return false;
+    if (!subscription.expiryDate) return true;
+    return new Date(subscription.expiryDate) > new Date();
+  }, []);
+
   const renderModuleTopic = useCallback((topicTitle) => {
     if (!topicTitle) return null;
     const lines = String(topicTitle)
@@ -647,7 +656,7 @@ export default function UserDashboardView({
     const targetWorksheet = learningData.worksheets.find(
       (sheet) => sheet.id === bookmark.itemId,
     );
-    const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
+    const hasActiveSubscription = isActiveSubscription(subscription);
     const hasUnlockedPremiumModule = learningData.modules.some(
       (module) => module.type === "paid" && !module.isLocked,
     );
@@ -726,7 +735,7 @@ export default function UserDashboardView({
   );
 
   const hasPremiumWorksheetAccess = useMemo(() => {
-    const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
+    const hasActiveSubscription = isActiveSubscription(subscription);
     const hasUnlockedPremiumModule = learningData.modules.some(
       (module) => module.type === "paid" && !module.isLocked,
     );
