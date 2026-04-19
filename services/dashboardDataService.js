@@ -2039,6 +2039,94 @@ export async function approvePaymentAndGrantAccessShared(paymentId) {
   }
 }
 
+export async function migrateLocalPaymentStoreToRemote(userId) {
+  if (!userId) return [];
+
+  const localRequests = getPaymentRequests();
+  const subscription = getUserSubscription(userId);
+  const supabase = getSupabaseBrowserClient();
+
+  const { data: remotePayments = [], error: remoteError } = await supabase
+    .from("payment_records")
+    .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
+    .eq("user_id", userId)
+    .order("submitted_at", { ascending: false });
+
+  if (remoteError) {
+    console.warn("Unable to fetch remote payment records during migration:", remoteError);
+    return [];
+  }
+
+  const normalizeKey = (payment) =>
+    `${payment.status || ""}|${payment.amount || 0}|${String(payment.method || payment.methodLabel || "")}|${String(payment.proofImage || "")}|${String(payment.submittedAt || payment.submitted_at || "")}`;
+
+  const remoteKeys = new Set(remotePayments.map(normalizeKey));
+  const inserted = [];
+
+  for (const request of localRequests) {
+    const key = normalizeKey(request);
+    if (remoteKeys.has(key)) continue;
+
+    const insertPayload = {
+      user_id: userId,
+      user_email: request.userEmail || "",
+      user_name: request.userName || request.userEmail?.split("@")[0] || "Learner",
+      module_id: request.moduleId || ONE_TIME_PREMIUM_MODULE_ID,
+      amount: Number(request.amount || 0),
+      method: String(request.method || request.methodLabel || "GCash"),
+      proof_image: String(request.proofImage || request.receiptImage || ""),
+      status: request.status || PAYMENT_STATUS.PENDING,
+      submitted_at: request.submittedAt ? new Date(request.submittedAt).toISOString() : new Date().toISOString(),
+      approved_at: request.approvedAt ? new Date(request.approvedAt).toISOString() : null,
+    };
+
+    const { data: created, error: createError } = await supabase
+      .from("payment_records")
+      .insert(insertPayload)
+      .select("id, status")
+      .single();
+
+    if (!createError && created) {
+      inserted.push(created);
+      remoteKeys.add(key);
+      if (created.status === PAYMENT_STATUS.APPROVED) {
+        await approvePaymentAndGrantAccessShared(created.id);
+      }
+    }
+  }
+
+  const hasRemoteApproved = remotePayments.some((payment) => payment.status === PAYMENT_STATUS.APPROVED) || inserted.some((payment) => payment.status === PAYMENT_STATUS.APPROVED);
+  const hasLocalApproved = localRequests.some((request) => request.status === PAYMENT_STATUS.APPROVED);
+
+  if (!hasRemoteApproved && !hasLocalApproved && subscription?.status === "active") {
+    const insertPayload = {
+      user_id: userId,
+      user_email: subscription.userEmail || "",
+      user_name: subscription.userName || "Learner",
+      module_id: ONE_TIME_PREMIUM_MODULE_ID,
+      amount: Number(subscription.amount || 0),
+      method: String(subscription.planLabel || "GCash"),
+      proof_image: "",
+      status: PAYMENT_STATUS.APPROVED,
+      submitted_at: subscription.submittedAt ? new Date(subscription.submittedAt).toISOString() : new Date().toISOString(),
+      approved_at: subscription.approvedAt ? new Date(subscription.approvedAt).toISOString() : new Date().toISOString(),
+    };
+
+    const { data: created, error: createError } = await supabase
+      .from("payment_records")
+      .insert(insertPayload)
+      .select("id, status")
+      .single();
+
+    if (!createError && created) {
+      inserted.push(created);
+      await approvePaymentAndGrantAccessShared(created.id);
+    }
+  }
+
+  return inserted;
+}
+
 export async function listUsersWithStatusShared(initialUsers = [], { forceReload = false } = {}) {
   const users = syncUsers(initialUsers);
 
@@ -2101,9 +2189,22 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
     const result = users.map((user) => {
       const subscription = getUserSubscription(user.id);
       const subscriptionRequests = getPaymentRequests().filter((request) => request.userId === user.id);
-      const latestSubscriptionRequest = subscriptionRequests
+      const localLatestSubscriptionRequest = subscriptionRequests
         .sort((left, right) => new Date(right.submittedAt).getTime() - new Date(left.submittedAt).getTime())[0] || null;
+
+      const approvedPaymentsForUser = payments.filter(
+        (payment) => payment.userId === user.id && payment.status === PAYMENT_STATUS.APPROVED
+      );
+      const latestApprovedPayment = approvedPaymentsForUser
+        .sort((left, right) => new Date(right.approvedAt || right.submittedAt || 0).getTime() - new Date(left.approvedAt || left.submittedAt || 0).getTime())[0] || null;
+
+      const latestSubscriptionRequest = [localLatestSubscriptionRequest, latestApprovedPayment]
+        .filter(Boolean)
+        .sort((left, right) => new Date(right.submittedAt || right.approvedAt || 0).getTime() - new Date(left.submittedAt || left.approvedAt || 0).getTime())[0] || null;
+
       const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
+      const hasApprovedPayment = Boolean(latestApprovedPayment);
+      const premiumAccessAllowed = hasActiveSubscription || hasApprovedPayment;
 
       const unlockedModuleIds = new Set(
         accessRows
@@ -2111,7 +2212,7 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
           .map((access) => access.moduleId)
       );
 
-      if (hasActiveSubscription) {
+      if (premiumAccessAllowed) {
         modules
           .filter((module) => module.type === MODULE_TYPE.PAID)
           .forEach((module) => unlockedModuleIds.add(module.id));
@@ -2125,9 +2226,23 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
         .filter((payment) => payment.userId === user.id)
         .sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
 
+      const effectiveSubscription = premiumAccessAllowed && !hasActiveSubscription
+        ? {
+            status: PAYMENT_STATUS.APPROVED,
+            planId: "lifetime",
+            planLabel: "Lifetime Access",
+            amount: Number(latestApprovedPayment?.amount || 0),
+            reference: latestApprovedPayment?.id || "",
+            requestId: latestApprovedPayment?.id || null,
+            submittedAt: latestApprovedPayment?.submittedAt || null,
+            approvedAt: latestApprovedPayment?.approvedAt || null,
+            updatedAt: latestApprovedPayment?.approvedAt || null,
+          }
+        : subscription;
+
       return {
         ...user,
-        subscription,
+        subscription: effectiveSubscription,
         latestSubscriptionRequest,
         unlockedModules,
         pendingPayments,

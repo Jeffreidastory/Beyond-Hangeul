@@ -37,8 +37,10 @@ import {
   getUserLearningDataShared,
   getUserResourcesData,
   listModuleFileProgressShared,
+  migrateLocalPaymentStoreToRemote,
   renameResourceFile,
   syncUsers,
+  submitPaymentProofShared,
   toggleResourceBookmark,
   upsertModuleFileProgressShared,
   upsertModuleProgressShared,
@@ -48,7 +50,6 @@ import {
   markAllNotificationsReadShared,
 } from "@/services/dashboardDataService";
 import {
-  addPaymentRequest,
   getPaymentMethods,
   getPaymentPlans,
   getPaymentRequests,
@@ -409,24 +410,89 @@ export default function UserDashboardView({
     const methods = getPaymentMethods();
     setPaymentPlans(plans);
     setPaymentMethods(methods);
-    setPaymentRequests(getPaymentRequests());
-    setSubscription(getUserSubscription(userId));
+
+    const remoteRequests = initialLearningData?.payments || [];
+    const activeRequests = remoteRequests.length ? remoteRequests : getPaymentRequests();
+    setPaymentRequests(activeRequests);
+
+    const latestApprovedPayment = (activeRequests || [])
+      .filter((request) => request.status === PAYMENT_STATUS.APPROVED)
+      .sort(
+        (left, right) =>
+          new Date(right.approvedAt || right.submittedAt || 0).getTime() -
+          new Date(left.approvedAt || left.submittedAt || 0).getTime(),
+      )[0] || null;
+
+    if (latestApprovedPayment) {
+      setSubscription({
+        status: PAYMENT_STATUS.APPROVED,
+        planId: "lifetime",
+        planLabel: "Lifetime Access",
+        amount: Number(latestApprovedPayment.amount || 0),
+        reference: latestApprovedPayment.id,
+        submittedAt: latestApprovedPayment.submittedAt || null,
+        approvedAt: latestApprovedPayment.approvedAt || null,
+      });
+    } else {
+      setSubscription(getUserSubscription(userId));
+    }
+
     setSelectedPlanId((current) => current || plans[0]?.id || "lifetime");
     setPaymentMethod((current) =>
       current || methods.find((method) => method.id === "gcash")?.id || methods[0]?.id || "gcash"
     );
-  }, [userId]);
+  }, [initialLearningData?.payments, userId]);
 
   const loadDashboardData = useCallback(async () => {
     await refreshLearningData();
   }, [refreshLearningData]);
 
+  const loadRemotePaymentState = useCallback(async () => {
+    if (!userId) return;
+
+    try {
+      const userLearningData = await getUserLearningDataShared(userId);
+      const remotePayments = userLearningData.payments || [];
+      setPaymentRequests(remotePayments);
+
+      const latestApprovedPayment = remotePayments
+        .filter((request) => request.status === PAYMENT_STATUS.APPROVED)
+        .sort(
+          (left, right) =>
+            new Date(right.approvedAt || right.submittedAt || 0).getTime() -
+            new Date(left.approvedAt || left.submittedAt || 0).getTime(),
+        )[0] || null;
+
+      if (latestApprovedPayment) {
+        setSubscription({
+          status: PAYMENT_STATUS.APPROVED,
+          planId: "lifetime",
+          planLabel: "Lifetime Access",
+          amount: Number(latestApprovedPayment.amount || 0),
+          reference: latestApprovedPayment.id,
+          submittedAt: latestApprovedPayment.submittedAt || null,
+          approvedAt: latestApprovedPayment.approvedAt || null,
+        });
+      }
+    } catch (error) {
+      console.warn("Unable to load remote payment state:", error);
+    }
+  }, [userId]);
+
   useEffect(() => {
-    void loadDashboardData();
-    void loadNotifications();
-    void loadModuleFileProgress();
-    loadPaymentStoreState();
-  }, [loadDashboardData, loadNotifications, loadModuleFileProgress, loadPaymentStoreState]);
+    const startup = async () => {
+      if (userId) {
+        await migrateLocalPaymentStoreToRemote(userId);
+      }
+      loadPaymentStoreState();
+      void loadRemotePaymentState();
+      void loadDashboardData();
+      void loadNotifications();
+      void loadModuleFileProgress();
+    };
+
+    void startup();
+  }, [userId, loadDashboardData, loadNotifications, loadModuleFileProgress, loadPaymentStoreState, loadRemotePaymentState]);
 
   useEffect(() => {
     const handleStorageEvent = (event) => {
@@ -1124,7 +1190,7 @@ export default function UserDashboardView({
     const selectedPlan = paymentPlans.find((plan) => plan.id === selectedPlanId);
     const selectedMethod = paymentMethods.find((method) => method.id === paymentMethod);
 
-    const paymentResult = addPaymentRequest({
+    const paymentResult = await submitPaymentProofShared({
       userId,
       userEmail,
       userName,
@@ -1136,7 +1202,19 @@ export default function UserDashboardView({
       proofImage,
     });
 
-    loadPaymentStoreState();
+    setPaymentRequests((prev) => [paymentResult, ...prev.filter((item) => item.id !== paymentResult.id)]);
+
+    if (paymentResult?.status === PAYMENT_STATUS.APPROVED) {
+      setSubscription({
+        status: PAYMENT_STATUS.APPROVED,
+        planId: "lifetime",
+        planLabel: "Lifetime Access",
+        amount: Number(paymentResult.amount || 0),
+        reference: paymentResult.id,
+        submittedAt: paymentResult.submittedAt || null,
+        approvedAt: paymentResult.approvedAt || null,
+      });
+    }
 
     if (paymentResult?.blocked) {
       if (paymentResult.blockReason === "already-active") {

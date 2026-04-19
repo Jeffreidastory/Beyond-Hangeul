@@ -8,12 +8,15 @@ import {
   deletePaymentMethod,
   getPaymentMethods,
   getPaymentPlans,
-  getPaymentRequests,
   savePaymentMethods,
   savePaymentPlans,
   updatePaymentMethod,
   updatePaymentRequestStatus,
 } from "@/services/paymentStore";
+import {
+  approvePaymentAndGrantAccessShared,
+  listPaymentsShared,
+} from "@/services/dashboardDataService";
 
 const tabItems = [
   { key: "requests", label: "Payment Requests" },
@@ -36,7 +39,7 @@ export default function PaymentManagementPanel() {
   const [activeTab, setActiveTab] = useState("requests");
   const [plans, setPlans] = useState(() => getPaymentPlans());
   const [methods, setMethods] = useState(() => getPaymentMethods());
-  const [requests, setRequests] = useState(() => getPaymentRequests());
+  const [requests, setRequests] = useState([]);
   const [pricingForm, setPricingForm] = useState(() =>
     getPaymentPlans().reduce((acc, plan) => {
       acc[`${plan.id}-price`] = plan.price;
@@ -50,15 +53,24 @@ export default function PaymentManagementPanel() {
   const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
-    const handleStorageChange = (event) => {
+    const loadRequests = async () => {
+      try {
+        const payments = await listPaymentsShared();
+        setRequests(payments);
+      } catch (error) {
+        console.warn("Unable to load payment requests:", error);
+      }
+    };
+
+    loadRequests();
+
+    const handleStorageChange = async (event) => {
       if (!event.key) return;
       if (event.key.startsWith("payment:") || event.key.startsWith("users:")) {
         const nextPlans = getPaymentPlans();
         const nextMethods = getPaymentMethods();
-        const nextRequests = getPaymentRequests();
         setPlans(nextPlans);
         setMethods(nextMethods);
-        setRequests(nextRequests);
         setPricingForm(
           nextPlans.reduce((acc, plan) => {
             acc[`${plan.id}-price`] = plan.price;
@@ -67,6 +79,12 @@ export default function PaymentManagementPanel() {
             return acc;
           }, {}),
         );
+        try {
+          const payments = await listPaymentsShared();
+          setRequests(payments);
+        } catch (error) {
+          console.warn("Unable to reload payment requests:", error);
+        }
       }
     };
 
@@ -164,9 +182,18 @@ export default function PaymentManagementPanel() {
     setStatusMessage("Payment method removed.");
   };
 
-  const handleRequestAction = (requestId, status) => {
-    updatePaymentRequestStatus(requestId, status);
-    setRequests(getPaymentRequests());
+  const handleRequestAction = async (requestId, status) => {
+    if (status === PAYMENT_STATUS.APPROVED) {
+      await approvePaymentAndGrantAccessShared(requestId);
+    } else {
+      updatePaymentRequestStatus(requestId, status);
+    }
+    try {
+      const payments = await listPaymentsShared();
+      setRequests(payments);
+    } catch (error) {
+      console.warn("Unable to refresh payment requests after action:", error);
+    }
     setStatusMessage(`Request ${status === PAYMENT_STATUS.APPROVED ? "approved" : "rejected"}.`);
   };
 
