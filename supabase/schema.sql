@@ -215,7 +215,7 @@ create table if not exists public.learning_modules (
   resource_file_data text not null default '',
   resource_file_type text not null default '',
   resource_files jsonb not null default '[]'::jsonb,
-  type text not null default 'free' check (type in ('free', 'paid')),
+  type text not null default 'free' check (type = 'free'),
   price numeric,
   status text not null default 'active' check (status in ('active', 'draft')),
   container_id uuid references public.learning_containers(id) on delete set null,
@@ -300,29 +300,6 @@ create policy "Users can manage own module file progress"
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
-create table if not exists public.payment_records (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  user_email text not null default '',
-  user_name text not null default 'Learner',
-  module_id text not null default 'premium-all-modules',
-  amount numeric not null default 150,
-  method text not null default 'GCash',
-  proof_image text not null default '',
-  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
-  submitted_at timestamptz not null default now(),
-  approved_at timestamptz
-);
-
-create table if not exists public.user_module_access (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  module_id uuid not null references public.learning_modules(id) on delete cascade,
-  status text not null default 'unlocked' check (status in ('locked', 'unlocked')),
-  granted_at timestamptz not null default now(),
-  unique (user_id, module_id)
-);
-
 create table if not exists public.worksheet_progress (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -338,7 +315,7 @@ create table if not exists public.worksheet_progress (
 create table if not exists public.learning_worksheets (
   id uuid primary key default gen_random_uuid(),
   title text not null,
-  access_type text not null default 'free' check (access_type in ('free', 'paid')),
+  access_type text not null default 'free' check (access_type = 'free'),
   resource_file_name text not null default '',
   resource_file_data text not null default '',
   resource_file_type text not null default '',
@@ -388,8 +365,6 @@ create table if not exists public.learning_path_steps (
 
 alter table public.learning_modules enable row level security;
 alter table public.learning_containers enable row level security;
-alter table public.payment_records enable row level security;
-alter table public.user_module_access enable row level security;
 alter table public.worksheet_progress enable row level security;
 alter table public.learning_worksheets enable row level security;
 alter table public.module_progress enable row level security;
@@ -426,35 +401,6 @@ for all
   using (public.is_admin())
   with check (public.is_admin());
 
-drop policy if exists "Users can update own pending payments" on public.payment_records;
-create policy "Users can update own pending payments"
-on public.payment_records
-for update
-to authenticated
-using ((user_id = auth.uid() and status = 'pending') or public.is_admin())
-with check ((user_id = auth.uid() and status = 'pending') or public.is_admin());
-
-drop policy if exists "Admins can delete payment records" on public.payment_records;
-create policy "Admins can delete payment records"
-on public.payment_records
-for delete
-to authenticated
-using (public.is_admin());
-
-drop policy if exists "Users can read own module access" on public.user_module_access;
-create policy "Users can read own module access"
-on public.user_module_access
-for select
-to authenticated
-using (user_id = auth.uid() or public.is_admin());
-
-drop policy if exists "Admins can manage module access" on public.user_module_access;
-create policy "Admins can manage module access"
-on public.user_module_access
-for all
-to authenticated
-using (public.is_admin())
-with check (public.is_admin());
 
 drop policy if exists "Users can read own worksheet progress" on public.worksheet_progress;
 create policy "Users can read own worksheet progress"
