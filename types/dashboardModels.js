@@ -36,8 +36,7 @@ export const PAYMENT_METHOD_TYPES = {
 };
 
 export const PAYMENT_PLAN_TYPES = {
-  MONTHLY: "monthly",
-  YEARLY: "yearly",
+  LIFETIME: "lifetime",
 };
 
 export const PAYMENT_METHODS = ["GCash", "GoTyme"];

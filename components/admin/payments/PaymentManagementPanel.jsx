@@ -45,7 +45,7 @@ export default function PaymentManagementPanel() {
       return acc;
     }, {}),
   );
-  const [methodForm, setMethodForm] = useState({ name: "", accountName: "", accountNumber: "", type: PAYMENT_METHOD_TYPES.E_WALLET });
+  const [methodForm, setMethodForm] = useState({ name: "", accountName: "", accountNumber: "", qrCode: "", type: PAYMENT_METHOD_TYPES.E_WALLET });
   const [editingMethodId, setEditingMethodId] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
 
@@ -98,19 +98,32 @@ export default function PaymentManagementPanel() {
     setStatusMessage("Pricing settings updated.");
   };
 
+  const readImageAsDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      if (!file) {
+        resolve("");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Unable to read QR code file."));
+      reader.readAsDataURL(file);
+    });
+
   const startEditMethod = (method) => {
     setEditingMethodId(method.id);
     setMethodForm({
       name: method.name,
       accountName: method.accountName,
       accountNumber: method.accountNumber,
+      qrCode: method.qrCode || "",
       type: method.type,
     });
   };
 
   const cancelEditMethod = () => {
     setEditingMethodId(null);
-    setMethodForm({ name: "", accountName: "", accountNumber: "", type: PAYMENT_METHOD_TYPES.E_WALLET });
+    setMethodForm({ name: "", accountName: "", accountNumber: "", qrCode: "", type: PAYMENT_METHOD_TYPES.E_WALLET });
   };
 
   const saveMethod = () => {
@@ -124,6 +137,7 @@ export default function PaymentManagementPanel() {
         name: methodForm.name,
         accountName: methodForm.accountName,
         accountNumber: methodForm.accountNumber,
+        qrCode: methodForm.qrCode,
         type: methodForm.type,
         label: methodForm.name,
       });
@@ -134,6 +148,7 @@ export default function PaymentManagementPanel() {
         name: methodForm.name,
         accountName: methodForm.accountName,
         accountNumber: methodForm.accountNumber,
+        qrCode: methodForm.qrCode,
         type: methodForm.type,
       });
       setMethods(getPaymentMethods());
@@ -297,7 +312,7 @@ export default function PaymentManagementPanel() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h4 className="text-base font-semibold text-amber-300">{plan.name}</h4>
-                    <p className="mt-1 text-sm text-slate-400">{plan.billingCycle === "year" ? "Best Value" : "Monthly billing"}</p>
+                    <p className="mt-1 text-sm text-slate-400">{plan.billingCycle === "lifetime" ? "One-time lifetime access" : plan.billingCycle}</p>
                   </div>
                   {plan.featured ? (
                     <span className="rounded-full bg-amber-400/10 px-2 py-1 text-xs font-semibold text-amber-300">
@@ -396,6 +411,41 @@ export default function PaymentManagementPanel() {
                   />
                 </label>
               </div>
+              <div className="mt-4 grid gap-3">
+                <label className="block text-sm font-semibold text-slate-200">
+                  Upload QR code
+                  <span className="mt-1 block text-xs text-slate-400">PNG or JPG format recommended for payment QR codes.</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      const qrCode = await readImageAsDataUrl(file);
+                      setMethodForm((prev) => ({ ...prev, qrCode }));
+                    }}
+                    className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm outline-none ${isLight ? "border-slate-300 bg-white text-slate-900" : "border-white/15 bg-[#0f1d32] text-slate-100"}`}
+                  />
+                </label>
+                <div className="rounded-2xl border border-slate-600 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">QR Code Preview</p>
+                  {methodForm.qrCode ? (
+                    <div className="mt-2 space-y-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={methodForm.qrCode} alt="QR code preview" className="h-28 w-28 rounded-2xl object-contain" />
+                      <button
+                        type="button"
+                        onClick={() => setMethodForm((prev) => ({ ...prev, qrCode: "" }))}
+                        className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/20"
+                      >
+                        Remove QR code
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500">No QR code uploaded yet. Add one here so users can scan it from the payment section.</p>
+                  )}
+                </div>
+              </div>
               <div className="mt-4 flex flex-wrap gap-3">
                 <button
                   type="button"
@@ -423,6 +473,7 @@ export default function PaymentManagementPanel() {
                     <th className="px-3 py-3 text-left">Method</th>
                     <th className="px-3 py-3 text-left">Account Name</th>
                     <th className="px-3 py-3 text-left">Account Number</th>
+                    <th className="px-3 py-3 text-left">QR Code</th>
                     <th className="px-3 py-3 text-left">Type</th>
                     <th className="px-3 py-3 text-left">Actions</th>
                   </tr>
@@ -430,7 +481,7 @@ export default function PaymentManagementPanel() {
                 <tbody>
                   {methods.length === 0 ? (
                     <tr>
-                      <td className={`px-3 py-6 text-center ${isLight ? "text-slate-500" : "text-slate-400"}`} colSpan={5}>
+                      <td className={`px-3 py-6 text-center ${isLight ? "text-slate-500" : "text-slate-400"}`} colSpan={6}>
                         No payment methods configured.
                       </td>
                     </tr>
@@ -440,6 +491,16 @@ export default function PaymentManagementPanel() {
                         <td className="px-3 py-3 text-slate-200">{method.name}</td>
                         <td className="px-3 py-3 text-slate-200">{method.accountName}</td>
                         <td className="px-3 py-3 text-slate-200">{method.accountNumber}</td>
+                        <td className="px-3 py-3 text-slate-200">
+                          {method.qrCode ? (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={method.qrCode} alt={`${method.name} QR code`} className="h-12 w-12 rounded-xl object-contain" />
+                            </>
+                          ) : (
+                            <span className="text-slate-400">None</span>
+                          )}
+                        </td>
                         <td className="px-3 py-3 text-slate-200">{method.type}</td>
                         <td className="px-3 py-3">
                           <div className="flex flex-wrap gap-2">

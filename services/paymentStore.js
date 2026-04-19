@@ -9,21 +9,12 @@ const STORAGE_KEYS = {
 
 const DEFAULT_PLANS = [
   {
-    id: "monthly",
-    name: "Monthly Plan",
-    price: 79,
-    billingCycle: "month",
-    label: "Monthly Plan",
-    description: "Perfect for learners who want flexible monthly access.",
-    featured: false,
-  },
-  {
-    id: "yearly",
-    name: "Yearly Plan",
-    price: 899,
-    billingCycle: "year",
-    label: "Yearly Plan",
-    description: "Best value for long-term learners with full access.",
+    id: "lifetime",
+    name: "Lifetime Access",
+    price: 349,
+    billingCycle: "lifetime",
+    label: "Lifetime Access",
+    description: "One-time payment for lifetime premium access to all content.",
     featured: true,
   },
 ];
@@ -36,6 +27,7 @@ const DEFAULT_METHODS = [
     accountNumber: "09089740724",
     type: "e-wallet",
     label: "GCash",
+    qrCode: "",
   },
   {
     id: "maya",
@@ -103,11 +95,11 @@ function randomId(prefix) {
 
 function normalizePlan(plan) {
   return {
-    id: String(plan?.id || "monthly"),
-    name: String(plan?.name || "Monthly Plan"),
-    price: Number(plan?.price || 79),
-    billingCycle: String(plan?.billingCycle || "month"),
-    label: String(plan?.label || (plan?.name || "Monthly Plan")),
+    id: String(plan?.id || "lifetime"),
+    name: String(plan?.name || "Lifetime Access"),
+    price: Number(plan?.price || 349),
+    billingCycle: String(plan?.billingCycle || "lifetime"),
+    label: String(plan?.label || (plan?.name || "Lifetime Access")),
     description: String(plan?.description || ""),
     featured: Boolean(plan?.featured),
   };
@@ -121,17 +113,18 @@ function normalizeMethod(method) {
     accountNumber: String(method?.accountNumber || ""),
     type: String(method?.type || "e-wallet"),
     label: String(method?.label || String(method?.name || "Payment Method")),
+    qrCode: String(method?.qrCode || ""),
   };
 }
 
 function normalizeRequest(request) {
-  return {
+  const normalized = {
     id: String(request?.id || randomId("payment")),
     userId: String(request?.userId || ""),
     userEmail: String(request?.userEmail || ""),
     userName: String(request?.userName || request?.userEmail?.split("@")[0] || "Learner"),
-    planId: String(request?.planId || "monthly"),
-    planLabel: String(request?.planLabel || "Monthly Plan"),
+    planId: String(request?.planId || "lifetime"),
+    planLabel: String(request?.planLabel || "Lifetime Access"),
     amount: Number(request?.amount || 0),
     methodId: String(request?.methodId || "gcash"),
     methodLabel: String(request?.methodLabel || "GCash"),
@@ -143,10 +136,32 @@ function normalizeRequest(request) {
     rejectedAt: request?.rejectedAt ? String(request.rejectedAt) : null,
     expiryDate: request?.expiryDate ? String(request.expiryDate) : null,
   };
+
+  return normalizeLegacyPayment(normalized);
+}
+
+const LEGACY_PLAN_IDS = new Set(["monthly", "yearly"]);
+
+function normalizeLegacyPayment(record) {
+  const label = String(record?.planLabel || "").toLowerCase();
+  const numericPlanId = String(record?.planId || "").toLowerCase();
+  const isLegacy = isLegacyPlanId(numericPlanId) || /(monthly|yearly)/i.test(label);
+
+  if (!isLegacy) {
+    return record;
+  }
+
+  return {
+    ...record,
+    planId: "lifetime",
+    planLabel: "Lifetime Access",
+    amount: 349,
+    expiryDate: record.status === PAYMENT_STATUS.APPROVED ? null : record.expiryDate,
+  };
 }
 
 function normalizeSubscription(subscription) {
-  return {
+  const normalized = {
     status: String(subscription?.status || "inactive"),
     planId: subscription?.planId ? String(subscription.planId) : null,
     planLabel: subscription?.planLabel ? String(subscription.planLabel) : null,
@@ -159,6 +174,30 @@ function normalizeSubscription(subscription) {
     rejectedAt: subscription?.rejectedAt ? String(subscription.rejectedAt) : null,
     updatedAt: subscription?.updatedAt ? String(subscription.updatedAt) : null,
   };
+
+  return normalizeLegacyPayment(normalized);
+}
+
+function isLegacyPlanId(planId) {
+  return LEGACY_PLAN_IDS.has(String(planId || "").toLowerCase());
+}
+
+function cleanLegacyRequests(requests = []) {
+  const cleaned = (requests || []).filter((request) => !isLegacyPlanId(request.planId));
+  if (cleaned.length !== (requests || []).length) {
+    savePaymentRequests(cleaned);
+  }
+  return cleaned;
+}
+
+function cleanLegacySubscription(userId, subscription) {
+  if (!subscription || !isLegacyPlanId(subscription.planId)) {
+    return subscription;
+  }
+
+  const cleared = normalizeSubscription(null);
+  setRawItem(`${STORAGE_KEYS.subscriptionPrefix}${userId}:subscription`, serializeValue(cleared));
+  return cleared;
 }
 
 function loadList(key, fallback) {
@@ -176,7 +215,31 @@ export function getPaymentPlans() {
     savePaymentPlans(DEFAULT_PLANS);
     return DEFAULT_PLANS;
   }
-  return storedPlans.map(normalizePlan);
+
+  const normalized = storedPlans.map(normalizePlan);
+  const lifetimeOnly = normalized
+    .filter((plan) => plan.billingCycle === "lifetime" || plan.id === "lifetime")
+    .map((plan) => ({
+      ...plan,
+      id: "lifetime",
+      name: "Lifetime Access",
+      label: "Lifetime Access",
+      price: 349,
+      billingCycle: "lifetime",
+      description: "One-time payment for lifetime premium access to all content.",
+      featured: true,
+    }));
+
+  if (!lifetimeOnly.length) {
+    savePaymentPlans(DEFAULT_PLANS);
+    return DEFAULT_PLANS;
+  }
+
+  if (lifetimeOnly.length !== normalized.length) {
+    savePaymentPlans(lifetimeOnly);
+  }
+
+  return lifetimeOnly;
 }
 
 export function savePaymentPlans(plans = []) {
@@ -218,7 +281,7 @@ export function getUserSubscription(userId) {
   if (!parsed) {
     return normalizeSubscription(null);
   }
-  return normalizeSubscription(parsed);
+  return cleanLegacySubscription(userId, normalizeSubscription(parsed));
 }
 
 export function saveUserSubscription(userId, subscription) {
@@ -243,7 +306,7 @@ export function addPaymentRequest(payload = {}) {
     };
   }
 
-  const planId = String(payload.planId || "monthly");
+  const planId = String(payload.planId || "lifetime");
   const plan = normalizePlan(payload.plan || { id: planId, ...DEFAULT_PLANS.find((item) => item.id === planId) });
   const method = normalizeMethod(payload.method || { id: String(payload.methodId || "gcash"), name: String(payload.methodLabel || "GCash") });
 
@@ -288,11 +351,17 @@ export function updatePaymentRequestStatus(requestId, nextStatus) {
   const planId = updatedRequest.planId || "monthly";
 
   if (nextStatus === PAYMENT_STATUS.APPROVED) {
-    const expiry = new Date();
-    expiry.setDate(expiry.getDate() + (planId === "yearly" ? 365 : 30));
+    let expiry = null;
+    if (planId === "yearly") {
+      expiry = new Date();
+      expiry.setDate(expiry.getDate() + 365);
+    } else if (planId === "monthly") {
+      expiry = new Date();
+      expiry.setDate(expiry.getDate() + 30);
+    }
     updatedRequest.status = PAYMENT_STATUS.APPROVED;
     updatedRequest.approvedAt = now;
-    updatedRequest.expiryDate = expiry.toISOString();
+    updatedRequest.expiryDate = expiry ? expiry.toISOString() : null;
     saveUserSubscription(updatedRequest.userId, {
       status: "active",
       planId: updatedRequest.planId,
@@ -335,6 +404,7 @@ export function addPaymentMethod(payload = {}) {
     accountNumber: payload.accountNumber,
     type: payload.type,
     label: payload.label || payload.name,
+    qrCode: payload.qrCode || "",
   });
   savePaymentMethods([nextMethod, ...methods]);
   return nextMethod;

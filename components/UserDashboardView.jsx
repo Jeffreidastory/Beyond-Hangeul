@@ -171,19 +171,20 @@ export default function UserDashboardView({
       containers: [],
     },
   );
-  const [resourcesData, setResourcesData] = useState(() =>
-    getUserResourcesData(userId),
-  );
+  const [resourcesData, setResourcesData] = useState({
+    files: [],
+    notes: [],
+    bookmarks: [],
+    references: [],
+  });
   const [resourcesNotice, setResourcesNotice] = useState("");
-  const [goalText, setGoalText] = useState(() =>
-    window.localStorage.getItem(`bh-goal-${userId}`) || "",
-  );
+  const [goalText, setGoalText] = useState("");
   const [goalSaved, setGoalSaved] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentPlans, setPaymentPlans] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [paymentRequests, setPaymentRequests] = useState([]);
-  const [selectedPlanId, setSelectedPlanId] = useState("monthly");
+  const [selectedPlanId, setSelectedPlanId] = useState("lifetime");
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [referenceNumber, setReferenceNumber] = useState("");
   const [proofImage, setProofImage] = useState("");
@@ -396,6 +397,13 @@ export default function UserDashboardView({
     }
   }, [userId]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setResourcesData(getUserResourcesData(userId));
+      setGoalText(window.localStorage.getItem(`bh-goal-${userId}`) || "");
+    }
+  }, [userId]);
+
   const loadPaymentStoreState = useCallback(() => {
     const plans = getPaymentPlans();
     const methods = getPaymentMethods();
@@ -403,8 +411,10 @@ export default function UserDashboardView({
     setPaymentMethods(methods);
     setPaymentRequests(getPaymentRequests());
     setSubscription(getUserSubscription(userId));
-    setSelectedPlanId((current) => current || plans[0]?.id || "monthly");
-    setPaymentMethod(methods[0]?.id || "gcash");
+    setSelectedPlanId((current) => current || plans[0]?.id || "lifetime");
+    setPaymentMethod((current) =>
+      current || methods.find((method) => method.id === "gcash")?.id || methods[0]?.id || "gcash"
+    );
   }, [userId]);
 
   const loadDashboardData = useCallback(async () => {

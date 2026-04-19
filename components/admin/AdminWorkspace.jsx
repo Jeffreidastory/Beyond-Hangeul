@@ -128,8 +128,8 @@ export default function AdminWorkspace({
   const [activeSection, setActiveSection] = useState(initialSection);
   const [modules, setModules] = useState([]);
   const [worksheets, setWorksheets] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [paymentRequests, setPaymentRequests] = useState(() => getPaymentRequests());
+  const [users, setUsers] = useState(initialUsers || []);
+  const [paymentRequests, setPaymentRequests] = useState([]);
 
   const [moduleForm, setModuleForm] = useState(defaultModule);
   const [worksheetForm, setWorksheetForm] = useState(defaultWorksheet);
@@ -150,6 +150,12 @@ export default function AdminWorkspace({
   const [containers, setContainers] = useState([]);
   const canCreateModule = containers.length > 0;
   const [moduleSearch, setModuleSearch] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setPaymentRequests(getPaymentRequests());
+    }
+  }, []);
   const [moduleSort, setModuleSort] = useState("newest");
   const [modulePage, setModulePage] = useState(1);
   const MODULES_PER_PAGE = 20;
@@ -487,15 +493,17 @@ export default function AdminWorkspace({
     const paidModules = modules.filter((item) => item.type === MODULE_TYPE.PAID);
     const pendingPayments = paymentRequests.filter((item) => item.status === PAYMENT_STATUS.PENDING);
     const approvedPayments = paymentRequests.filter((item) => item.status === PAYMENT_STATUS.APPROVED);
+    const totalUsers = users.filter((user) => String(user.role || "user").toLowerCase() !== "admin").length;
     const premiumUsers = users.filter((user) => {
       const role = String(user.role || "user").toLowerCase();
       return role !== "admin" && (Array.isArray(user.unlockedModules) ? user.unlockedModules.length > 0 : false);
     }).length;
+    const activeModuleCount = modules.filter((item) => (item.status || MODULE_STATUS.ACTIVE) === MODULE_STATUS.ACTIVE).length;
 
     return {
-      moduleCount: modules.length,
+      moduleCount: activeModuleCount,
       paidModuleCount: paidModules.length,
-      userCount: users.length,
+      userCount: totalUsers,
       premiumUsers,
       pendingPayments: pendingPayments.length,
       approvedPayments: approvedPayments.length,
@@ -509,7 +517,9 @@ export default function AdminWorkspace({
       const subscription = user.subscription || {};
       const hasActiveSubscription = !isAdmin && subscription.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
       const latestRequest = user.latestSubscriptionRequest || null;
-      const paymentStatus = isAdmin ? "na" : hasActiveSubscription ? "active" : latestRequest?.status || "na";
+      const hasApprovedRequest = !isAdmin && latestRequest?.status === PAYMENT_STATUS.APPROVED;
+      const hasActiveOrApprovedSubscription = hasActiveSubscription || hasApprovedRequest;
+      const paymentStatus = isAdmin ? "na" : hasActiveOrApprovedSubscription ? "active" : latestRequest?.status || "na";
 
       return {
         ...user,
@@ -517,9 +527,9 @@ export default function AdminWorkspace({
         isAdmin,
         hasActiveSubscription,
         latestSubscriptionRequest: latestRequest,
-        learningAccess: isAdmin ? "not-applicable" : hasActiveSubscription ? "premium" : "free",
+        learningAccess: isAdmin ? "not-applicable" : hasActiveOrApprovedSubscription ? "lifetime" : "free",
         paymentStatus,
-        premiumEntitlement: isAdmin ? "na" : hasActiveSubscription ? "all-premium" : "none",
+        premiumEntitlement: isAdmin ? "na" : hasActiveOrApprovedSubscription ? "all-access" : "none",
       };
     });
   }, [users]);
@@ -528,7 +538,9 @@ export default function AdminWorkspace({
     const totalAccounts = userAccountRows.length;
     const adminAccounts = userAccountRows.filter((user) => user.isAdmin).length;
     const totalUsers = userAccountRows.filter((user) => !user.isAdmin).length;
-    const premiumUsers = userAccountRows.filter((user) => user.learningAccess === "premium").length;
+    const premiumUsers = userAccountRows.filter(
+      (user) => !user.isAdmin && user.learningAccess === "lifetime"
+    ).length;
 
     return {
       totalAccounts,
@@ -549,7 +561,7 @@ export default function AdminWorkspace({
             ? !user.isAdmin
             : userFilterTab === "admins"
               ? user.isAdmin
-              : user.learningAccess === "premium";
+              : !user.isAdmin && user.learningAccess === "lifetime";
 
       if (!matchesFilter) return false;
       if (!normalizedSearch) return true;
@@ -578,6 +590,20 @@ export default function AdminWorkspace({
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const sevenDaysAgo = now.getTime() - 6 * 24 * 60 * 60 * 1000;
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    const formatActivityTimestamp = (value) => {
+      if (!value) return "Unknown date";
+      const date = new Date(value);
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "UTC",
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(date);
+    };
 
     const approvedWithTime = approvedPayments.map((payment) => ({
       payment,
@@ -608,7 +634,7 @@ export default function AdminWorkspace({
       id: payment.id,
       userName: resolveUserName(payment),
       moduleName: getPaymentModuleLabel(payment),
-      dateLabel: new Date(payment.submittedAt || Date.now()).toLocaleDateString(),
+      dateLabel: formatActivityTimestamp(payment.submittedAt || Date.now()),
       payment,
     }));
 
@@ -633,7 +659,7 @@ export default function AdminWorkspace({
       .slice(0, 14)
       .map((item) => ({
         ...item,
-        timeLabel: item.timestamp ? new Date(item.timestamp).toLocaleString() : "Just now",
+        timeLabel: item.timestamp ? formatActivityTimestamp(item.timestamp) : "Just now",
       }));
 
     return {
@@ -1102,9 +1128,9 @@ export default function AdminWorkspace({
   const renderDashboard = () => (
     <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <SummaryCard icon="👥" label="Total Users" value={metrics.userCount} tone="sky" isLoading={isLoadingAdminData} />
-        <SummaryCard icon="�" label="Total Premium Users" value={metrics.premiumUsers} tone="emerald" isLoading={isLoadingAdminData} />
-        <SummaryCard icon="�📚" label="Total Modules" value={metrics.moduleCount} tone="slate" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="👥" label="Total Users" value={usersSummary.totalUsers} tone="sky" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="💎" label="Total Premium Users" value={usersSummary.premiumUsers} tone="emerald" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="📚" label="Total Modules" value={metrics.moduleCount} tone="slate" isLoading={isLoadingAdminData} />
         <SummaryCard icon="⏳" label="Pending Payments" value={metrics.pendingPayments} tone="amber" isLoading={isLoadingAdminData} />
         <SummaryCard icon="💰" label="Total Revenue" value={formatPeso(dashboardInsights.totalRevenue)} tone="emerald" isLoading={isLoadingAdminData} />
       </div>
@@ -1556,14 +1582,13 @@ export default function AdminWorkspace({
               <th className="px-3 py-2 text-left">Role</th>
               <th className="px-3 py-2 text-left">Learning Access</th>
               <th className="px-3 py-2 text-left">Payment Status</th>
-              <th className="px-3 py-2 text-left">Premium Entitlement</th>
               <th className="px-3 py-2 text-left">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredUserRows.length === 0 ? (
               <tr className="border-t border-white/10 bg-[#0f1d32]">
-                <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
+                <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
                   No user accounts found for the current filters.
                 </td>
               </tr>
@@ -1578,8 +1603,8 @@ export default function AdminWorkspace({
                     </StatusBadge>
                   </td>
                   <td className="px-3 py-3">
-                    {user.learningAccess === "premium" ? (
-                      <StatusBadge tone="green">Premium Access</StatusBadge>
+                    {user.learningAccess === "lifetime" ? (
+                      <StatusBadge tone="green">Lifetime Plan</StatusBadge>
                     ) : user.learningAccess === "free" ? (
                       <StatusBadge tone="slate">Free Plan</StatusBadge>
                     ) : (
@@ -1601,16 +1626,7 @@ export default function AdminWorkspace({
                       <StatusBadge tone="slate">No Record</StatusBadge>
                     )}
                   </td>
-                  <td className="px-3 py-3">
-                    {user.premiumEntitlement === "na" ? (
-                      <span className="text-slate-500">—</span>
-                    ) : user.premiumEntitlement === "all-premium" ? (
-                      <StatusBadge tone="blue">All Premium Modules</StatusBadge>
-                    ) : (
-                      <StatusBadge tone="slate">None</StatusBadge>
-                    )}
-                  </td>
-                  <td className="px-3 py-3">
+                      <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-2">
                       {user.isAdmin ? (
                         <button
@@ -1670,7 +1686,7 @@ export default function AdminWorkspace({
         </article>
         <article className="rounded-xl border border-white/10 bg-[#13243d] p-4">
           <p className="text-xs uppercase tracking-wide text-slate-400">Total Users</p>
-          <p className="mt-2 text-2xl font-bold">{metrics.userCount}</p>
+          <p className="mt-2 text-2xl font-bold">{usersSummary.totalUsers}</p>
         </article>
       </div>
     </SectionCard>
@@ -2435,8 +2451,8 @@ export default function AdminWorkspace({
               <article className="rounded-xl border border-white/10 bg-[#13243d] p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-400">Learning Access</p>
                 <div className="mt-2">
-                  {selectedUserAccount.learningAccess === "premium" ? (
-                    <StatusBadge tone="green">Premium Access</StatusBadge>
+                  {selectedUserAccount.learningAccess === "lifetime" ? (
+                    <StatusBadge tone="green">Lifetime Plan</StatusBadge>
                   ) : selectedUserAccount.learningAccess === "free" ? (
                     <StatusBadge tone="slate">Free Plan</StatusBadge>
                   ) : (
