@@ -45,7 +45,7 @@ let paymentMethods = [...DEFAULT_METHODS];
 let paymentRequests = [];
 const userSubscriptions = new Map();
 
-function clearLocalPaymentStore() {
+export function clearLocalPaymentStore() {
   paymentPlans = [...DEFAULT_PLANS];
   paymentMethods = [...DEFAULT_METHODS];
   paymentRequests = [];
