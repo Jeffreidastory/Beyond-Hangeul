@@ -13,6 +13,7 @@ import {
 } from "@/types/dashboardModels";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import {
+  approvePaymentAndGrantAccessShared,
   createContainerShared,
   createModuleShared,
   createWorksheetShared,
@@ -23,6 +24,7 @@ import {
   invalidateAdminCache,
   listContainersShared,
   listModulesShared,
+  listPaymentsShared,
   listWorksheetsShared,
   listUsersWithStatusShared,
   syncUsers,
@@ -30,7 +32,7 @@ import {
   updateModuleShared,
   updateWorksheetShared,
 } from "@/services/dashboardDataService";
-import { getPaymentRequests, updatePaymentRequestStatus } from "@/services/paymentStore";
+import { getPaymentRequests } from "@/services/paymentStore";
 import SummaryCard from "@/components/admin/cards/SummaryCard";
 import PendingPaymentsTable from "@/components/admin/payments/PendingPaymentsTable";
 import RecentActivityPanel from "@/components/admin/activity/RecentActivityPanel";
@@ -180,6 +182,8 @@ export default function AdminWorkspace({
   const [loggingOut, setLoggingOut] = useState(false);
   const [userFilterTab, setUserFilterTab] = useState("all");
   const [userSearch, setUserSearch] = useState("");
+  const [userPage, setUserPage] = useState(1);
+  const USER_ROWS_PER_PAGE = 30;
   const hasAutoMigratedRef = useRef(false);
   const realtimeReloadTimerRef = useRef(null);
 
@@ -215,12 +219,15 @@ export default function AdminWorkspace({
         sectionKeys = ["users"];
         break;
       case "payments":
-        fetchPromises = [];
-        sectionKeys = [];
+        fetchPromises = [listPaymentsShared({ forceReload })];
+        sectionKeys = ["payments"];
         break;
       case "sales-report":
-        fetchPromises = [listUsersWithStatusShared(initialUsers, { forceReload })];
-        sectionKeys = ["users"];
+        fetchPromises = [
+          listUsersWithStatusShared(initialUsers, { forceReload }),
+          listPaymentsShared({ forceReload }),
+        ];
+        sectionKeys = ["users", "payments"];
         break;
       default:
         fetchPromises = [
@@ -228,8 +235,9 @@ export default function AdminWorkspace({
           listUsersWithStatusShared(initialUsers, { forceReload }),
           listWorksheetsShared({ forceReload }),
           listContainersShared({ forceReload }),
+          listPaymentsShared({ forceReload }),
         ];
-        sectionKeys = ["modules", "users", "worksheets", "containers"];
+        sectionKeys = ["modules", "users", "worksheets", "containers", "payments"];
         break;
     }
 
@@ -261,7 +269,7 @@ export default function AdminWorkspace({
     applyRefresh("users", setUsers);
     applyRefresh("worksheets", setWorksheets);
     applyRefresh("containers", setContainers);
-    setPaymentRequests(getPaymentRequests());
+    applyRefresh("payments", setPaymentRequests);
 
     if (refreshError) {
       setStatusMessage("Some shared admin data could not be loaded. Check backend connectivity.");
@@ -381,7 +389,7 @@ export default function AdminWorkspace({
       if (cached.modules) setModules(cached.modules);
       if (cached.containers) setContainers(cached.containers);
       if (cached.worksheets) setWorksheets(cached.worksheets);
-      if (cached.payments) setPayments(cached.payments);
+      if (cached.payments) setPaymentRequests(cached.payments);
       if (cached.users) setUsers(cached.users);
       setIsLoadingAdminData(false);
     }
@@ -571,6 +579,20 @@ export default function AdminWorkspace({
       );
     });
   }, [userAccountRows, userFilterTab, userSearch]);
+
+  const userPageCount = useMemo(
+    () => Math.max(1, Math.ceil(filteredUserRows.length / USER_ROWS_PER_PAGE)),
+    [filteredUserRows.length],
+  );
+
+  const pagedUserRows = useMemo(
+    () => filteredUserRows.slice((userPage - 1) * USER_ROWS_PER_PAGE, userPage * USER_ROWS_PER_PAGE),
+    [filteredUserRows, userPage, USER_ROWS_PER_PAGE],
+  );
+
+  useEffect(() => {
+    setUserPage(1);
+  }, [userFilterTab, userSearch]);
 
   const dashboardInsights = useMemo(() => {
     const userMap = new Map(users.map((item) => [item.id, item.name || item.email || "Learner"]));
@@ -1143,8 +1165,7 @@ export default function AdminWorkspace({
             setSelectedPayment({ ...payment, userName: row?.userName || payment.userEmail });
           }}
           onApprove={async (payment) => {
-            await updatePaymentRequestStatus(payment.id, PAYMENT_STATUS.APPROVED);
-            setPaymentRequests(getPaymentRequests());
+            await approvePaymentAndGrantAccessShared(payment.id);
             setStatusMessage("Payment confirmed and subscription activated.");
             await refreshAll();
           }}
@@ -1593,7 +1614,7 @@ export default function AdminWorkspace({
                 </td>
               </tr>
             ) : (
-              filteredUserRows.map((user) => (
+              pagedUserRows.map((user) => (
                 <tr key={user.id} className="border-t border-white/10 bg-[#0f1d32] align-top">
                   <td className="px-3 py-3 font-semibold text-white">{user.name || "Learner"}</td>
                   <td className="px-3 py-3 text-slate-300">{user.email}</td>
@@ -1669,6 +1690,32 @@ export default function AdminWorkspace({
             )}
           </tbody>
         </table>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-2 text-sm text-slate-300">
+        <div>
+          Showing {pagedUserRows.length} of {filteredUserRows.length} matching users
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setUserPage((current) => Math.max(1, current - 1))}
+            disabled={userPage <= 1}
+            className="rounded-lg border border-white/10 bg-[#0f1d32] px-3 py-1 text-xs font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span>
+            Page {userPage} of {userPageCount}
+          </span>
+          <button
+            type="button"
+            onClick={() => setUserPage((current) => Math.min(userPageCount, current + 1))}
+            disabled={userPage >= userPageCount}
+            className="rounded-lg border border-white/10 bg-[#0f1d32] px-3 py-1 text-xs font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </SectionCard>
   );
@@ -2553,8 +2600,7 @@ export default function AdminWorkspace({
         onClose={() => setSelectedPayment(null)}
         onApprove={async () => {
           if (!selectedPayment) return;
-          await updatePaymentRequestStatus(selectedPayment.id, PAYMENT_STATUS.APPROVED);
-          setPaymentRequests(getPaymentRequests());
+          await approvePaymentAndGrantAccessShared(selectedPayment.id);
           setSelectedPayment(null);
           setStatusMessage("Subscription approved and activated.");
           await refreshAll();
