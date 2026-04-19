@@ -7,7 +7,11 @@ import {
   PAYMENT_STATUS,
 } from "@/types/dashboardModels";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
-import { getPaymentRequests, getUserSubscription } from "@/services/paymentStore";
+import {
+  clearLocalPaymentStore,
+  getPaymentRequests,
+  getUserSubscription,
+} from "@/services/paymentStore";
 
 const STORAGE_KEY = "bh-dashboard-data-v1";
 const DASHBOARD_BLOB_STORE_KEY = "__bhDashboardBlobStore";
@@ -1985,8 +1989,9 @@ export async function submitPaymentProofShared(payload) {
 
     if (createError) throw createError;
     return mapPaymentRowToModel(created);
-  } catch {
-    return submitPaymentProof(payload);
+  } catch (error) {
+    console.warn("Remote payment submission failed, local fallback is disabled:", error);
+    throw error;
   }
 }
 
@@ -2034,97 +2039,50 @@ export async function approvePaymentAndGrantAccessShared(paymentId) {
 
       if (accessError) throw accessError;
     }
-  } catch {
-    approvePaymentAndGrantAccess(paymentId);
+  } catch (error) {
+    console.warn("Remote approve-and-grant access failed, local fallback is disabled:", error);
+    throw error;
   }
 }
 
 export async function migrateLocalPaymentStoreToRemote(userId) {
-  if (!userId) return [];
+  clearLocalPaymentStore();
+  return [];
+}
 
-  const localRequests = getPaymentRequests();
-  const subscription = getUserSubscription(userId);
+export async function updatePaymentRequestStatusShared(requestId, nextStatus) {
+  const supabase = getSupabaseBrowserClient();
+  const updates = { status: nextStatus };
+  if (nextStatus === PAYMENT_STATUS.REJECTED) {
+    updates.rejected_at = new Date().toISOString();
+  }
+
+  const { error } = await supabase.from("payment_records").update(updates).eq("id", requestId);
+  if (error) throw error;
+}
+
+export async function clearOnlinePaymentDataShared() {
   const supabase = getSupabaseBrowserClient();
 
-  const { data: remotePayments = [], error: remoteError } = await supabase
-    .from("payment_records")
-    .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
-    .eq("user_id", userId)
-    .order("submitted_at", { ascending: false });
+  const { error: deletePaymentsError } = await supabase.from("payment_records").delete().neq("id", "");
+  if (deletePaymentsError) throw deletePaymentsError;
 
-  if (remoteError) {
-    console.warn("Unable to fetch remote payment records during migration:", remoteError);
-    return [];
+  const { data: premiumModules, error: moduleError } = await supabase
+    .from("learning_modules")
+    .select("id")
+    .eq("type", MODULE_TYPE.PAID);
+
+  if (moduleError) throw moduleError;
+
+  const premiumModuleIds = (premiumModules || []).map((module) => module.id).filter(Boolean);
+  if (premiumModuleIds.length) {
+    const { error: deleteAccessError } = await supabase
+      .from("user_module_access")
+      .delete()
+      .in("module_id", premiumModuleIds);
+
+    if (deleteAccessError) throw deleteAccessError;
   }
-
-  const normalizeKey = (payment) =>
-    `${payment.status || ""}|${payment.amount || 0}|${String(payment.method || payment.methodLabel || "")}|${String(payment.proofImage || "")}|${String(payment.submittedAt || payment.submitted_at || "")}`;
-
-  const remoteKeys = new Set(remotePayments.map(normalizeKey));
-  const inserted = [];
-
-  for (const request of localRequests) {
-    const key = normalizeKey(request);
-    if (remoteKeys.has(key)) continue;
-
-    const insertPayload = {
-      user_id: userId,
-      user_email: request.userEmail || "",
-      user_name: request.userName || request.userEmail?.split("@")[0] || "Learner",
-      module_id: request.moduleId || ONE_TIME_PREMIUM_MODULE_ID,
-      amount: Number(request.amount || 0),
-      method: String(request.method || request.methodLabel || "GCash"),
-      proof_image: String(request.proofImage || request.receiptImage || ""),
-      status: request.status || PAYMENT_STATUS.PENDING,
-      submitted_at: request.submittedAt ? new Date(request.submittedAt).toISOString() : new Date().toISOString(),
-      approved_at: request.approvedAt ? new Date(request.approvedAt).toISOString() : null,
-    };
-
-    const { data: created, error: createError } = await supabase
-      .from("payment_records")
-      .insert(insertPayload)
-      .select("id, status")
-      .single();
-
-    if (!createError && created) {
-      inserted.push(created);
-      remoteKeys.add(key);
-      if (created.status === PAYMENT_STATUS.APPROVED) {
-        await approvePaymentAndGrantAccessShared(created.id);
-      }
-    }
-  }
-
-  const hasRemoteApproved = remotePayments.some((payment) => payment.status === PAYMENT_STATUS.APPROVED) || inserted.some((payment) => payment.status === PAYMENT_STATUS.APPROVED);
-  const hasLocalApproved = localRequests.some((request) => request.status === PAYMENT_STATUS.APPROVED);
-
-  if (!hasRemoteApproved && !hasLocalApproved && subscription?.status === "active") {
-    const insertPayload = {
-      user_id: userId,
-      user_email: subscription.userEmail || "",
-      user_name: subscription.userName || "Learner",
-      module_id: ONE_TIME_PREMIUM_MODULE_ID,
-      amount: Number(subscription.amount || 0),
-      method: String(subscription.planLabel || "GCash"),
-      proof_image: "",
-      status: PAYMENT_STATUS.APPROVED,
-      submitted_at: subscription.submittedAt ? new Date(subscription.submittedAt).toISOString() : new Date().toISOString(),
-      approved_at: subscription.approvedAt ? new Date(subscription.approvedAt).toISOString() : new Date().toISOString(),
-    };
-
-    const { data: created, error: createError } = await supabase
-      .from("payment_records")
-      .insert(insertPayload)
-      .select("id, status")
-      .single();
-
-    if (!createError && created) {
-      inserted.push(created);
-      await approvePaymentAndGrantAccessShared(created.id);
-    }
-  }
-
-  return inserted;
 }
 
 export async function listUsersWithStatusShared(initialUsers = [], { forceReload = false } = {}) {

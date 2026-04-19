@@ -1,12 +1,5 @@
 import { PAYMENT_STATUS } from "@/types/dashboardModels";
 
-const STORAGE_KEYS = {
-  plans: "payment:plans",
-  methods: "payment:methods",
-  requests: "payment:requests",
-  subscriptionPrefix: "users:",
-};
-
 const DEFAULT_PLANS = [
   {
     id: "lifetime",
@@ -47,46 +40,34 @@ const DEFAULT_METHODS = [
   },
 ];
 
-const storageBackend = (() => {
-  if (typeof window === "undefined") return null;
-  if (window.storage && typeof window.storage.getItem === "function" && typeof window.storage.setItem === "function") {
-    return window.storage;
-  }
-  if (typeof window.localStorage !== "undefined") {
-    return window.localStorage;
-  }
-  return null;
-})();
+let paymentPlans = [...DEFAULT_PLANS];
+let paymentMethods = [...DEFAULT_METHODS];
+let paymentRequests = [];
+const userSubscriptions = new Map();
 
-function getRawItem(key) {
-  if (!storageBackend) return null;
-  try {
-    return storageBackend.getItem(key);
-  } catch {
-    return null;
-  }
-}
+function clearLocalPaymentStore() {
+  paymentPlans = [...DEFAULT_PLANS];
+  paymentMethods = [...DEFAULT_METHODS];
+  paymentRequests = [];
+  userSubscriptions.clear();
 
-function setRawItem(key, value) {
-  if (!storageBackend) return;
-  try {
-    storageBackend.setItem(key, value);
-  } catch {
-    // ignore storage write failure
-  }
-}
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.removeItem("payment:plans");
+      window.localStorage.removeItem("payment:methods");
+      window.localStorage.removeItem("payment:requests");
+      window.localStorage.removeItem("bh-dashboard-data-v1");
 
-function parseStoredValue(value, fallback) {
-  if (value == null) return fallback;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
+      for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+        const key = window.localStorage.key(index);
+        if (typeof key === "string" && key.startsWith("users:") && key.endsWith(":subscription")) {
+          window.localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // ignore cleanup failures
+    }
   }
-}
-
-function serializeValue(value) {
-  return JSON.stringify(value);
 }
 
 function randomId(prefix) {
@@ -196,27 +177,20 @@ function cleanLegacySubscription(userId, subscription) {
   }
 
   const cleared = normalizeSubscription(null);
-  setRawItem(`${STORAGE_KEYS.subscriptionPrefix}${userId}:subscription`, serializeValue(cleared));
+  userSubscriptions.set(userId, cleared);
   return cleared;
 }
 
 function loadList(key, fallback) {
-  const raw = getRawItem(key);
-  const parsed = parseStoredValue(raw, null);
-  if (!Array.isArray(parsed)) {
-    return fallback;
-  }
-  return parsed;
+  return fallback;
 }
 
 export function getPaymentPlans() {
-  const storedPlans = loadList(STORAGE_KEYS.plans, null);
-  if (!storedPlans || !storedPlans.length) {
-    savePaymentPlans(DEFAULT_PLANS);
-    return DEFAULT_PLANS;
+  if (!paymentPlans || !paymentPlans.length) {
+    paymentPlans = [...DEFAULT_PLANS];
   }
 
-  const normalized = storedPlans.map(normalizePlan);
+  const normalized = paymentPlans.map(normalizePlan);
   const lifetimeOnly = normalized
     .filter((plan) => plan.billingCycle === "lifetime" || plan.id === "lifetime")
     .map((plan) => ({
@@ -231,63 +205,53 @@ export function getPaymentPlans() {
     }));
 
   if (!lifetimeOnly.length) {
-    savePaymentPlans(DEFAULT_PLANS);
+    paymentPlans = [...DEFAULT_PLANS];
     return DEFAULT_PLANS;
   }
 
   if (lifetimeOnly.length !== normalized.length) {
-    savePaymentPlans(lifetimeOnly);
+    paymentPlans = lifetimeOnly;
   }
 
   return lifetimeOnly;
 }
 
 export function savePaymentPlans(plans = []) {
-  const normalized = (plans || []).map(normalizePlan);
-  setRawItem(STORAGE_KEYS.plans, serializeValue(normalized));
-  return normalized;
+  paymentPlans = (plans || []).map(normalizePlan);
+  return paymentPlans;
 }
 
 export function getPaymentMethods() {
-  const storedMethods = loadList(STORAGE_KEYS.methods, null);
-  if (!storedMethods || !storedMethods.length) {
-    savePaymentMethods(DEFAULT_METHODS);
-    return DEFAULT_METHODS;
+  if (!paymentMethods || !paymentMethods.length) {
+    paymentMethods = [...DEFAULT_METHODS];
   }
-  return storedMethods.map(normalizeMethod);
+  return paymentMethods.map(normalizeMethod);
 }
 
 export function savePaymentMethods(methods = []) {
-  const normalized = (methods || []).map(normalizeMethod);
-  setRawItem(STORAGE_KEYS.methods, serializeValue(normalized));
-  return normalized;
+  paymentMethods = (methods || []).map(normalizeMethod);
+  return paymentMethods;
 }
 
 export function getPaymentRequests() {
-  const storedRequests = loadList(STORAGE_KEYS.requests, []);
-  return (storedRequests || []).map(normalizeRequest).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  return (paymentRequests || []).map(normalizeRequest).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 }
 
 export function savePaymentRequests(requests = []) {
-  const normalized = (requests || []).map(normalizeRequest);
-  setRawItem(STORAGE_KEYS.requests, serializeValue(normalized));
-  return normalized;
+  paymentRequests = (requests || []).map(normalizeRequest);
+  return paymentRequests;
 }
 
 export function getUserSubscription(userId) {
   if (!userId) return normalizeSubscription(null);
-  const raw = getRawItem(`${STORAGE_KEYS.subscriptionPrefix}${userId}:subscription`);
-  const parsed = parseStoredValue(raw, null);
-  if (!parsed) {
-    return normalizeSubscription(null);
-  }
-  return cleanLegacySubscription(userId, normalizeSubscription(parsed));
+  const subscription = userSubscriptions.get(userId);
+  return cleanLegacySubscription(userId, normalizeSubscription(subscription || null));
 }
 
 export function saveUserSubscription(userId, subscription) {
   if (!userId) return normalizeSubscription(null);
   const normalized = normalizeSubscription(subscription);
-  setRawItem(`${STORAGE_KEYS.subscriptionPrefix}${userId}:subscription`, serializeValue(normalized));
+  userSubscriptions.set(userId, normalized);
   return normalized;
 }
 

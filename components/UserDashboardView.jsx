@@ -37,7 +37,6 @@ import {
   getUserLearningDataShared,
   getUserResourcesData,
   listModuleFileProgressShared,
-  migrateLocalPaymentStoreToRemote,
   renameResourceFile,
   syncUsers,
   submitPaymentProofShared,
@@ -50,10 +49,9 @@ import {
   markAllNotificationsReadShared,
 } from "@/services/dashboardDataService";
 import {
+  clearLocalPaymentStore,
   getPaymentMethods,
   getPaymentPlans,
-  getPaymentRequests,
-  getUserSubscription,
 } from "@/services/paymentStore";
 import UserPathTimeline from "@/components/path/UserPathTimeline";
 import HeroLearningCard from "@/components/user/dashboard/HeroLearningCard";
@@ -411,8 +409,7 @@ export default function UserDashboardView({
     setPaymentPlans(plans);
     setPaymentMethods(methods);
 
-    const remoteRequests = initialLearningData?.payments || [];
-    const activeRequests = remoteRequests.length ? remoteRequests : getPaymentRequests();
+    const activeRequests = initialLearningData?.payments || [];
     setPaymentRequests(activeRequests);
 
     const latestApprovedPayment = (activeRequests || [])
@@ -434,14 +431,14 @@ export default function UserDashboardView({
         approvedAt: latestApprovedPayment.approvedAt || null,
       });
     } else {
-      setSubscription(getUserSubscription(userId));
+      setSubscription(null);
     }
 
     setSelectedPlanId((current) => current || plans[0]?.id || "lifetime");
     setPaymentMethod((current) =>
       current || methods.find((method) => method.id === "gcash")?.id || methods[0]?.id || "gcash"
     );
-  }, [initialLearningData?.payments, userId]);
+  }, [initialLearningData?.payments]);
 
   const loadDashboardData = useCallback(async () => {
     await refreshLearningData();
@@ -482,7 +479,7 @@ export default function UserDashboardView({
   useEffect(() => {
     const startup = async () => {
       if (userId) {
-        await migrateLocalPaymentStoreToRemote(userId);
+        clearLocalPaymentStore();
       }
       loadPaymentStoreState();
       void loadRemotePaymentState();
@@ -494,21 +491,6 @@ export default function UserDashboardView({
     void startup();
   }, [userId, loadDashboardData, loadNotifications, loadModuleFileProgress, loadPaymentStoreState, loadRemotePaymentState]);
 
-  useEffect(() => {
-    const handleStorageEvent = (event) => {
-      if (!event.key) return;
-      if (event.key.startsWith("payment:") || event.key.startsWith("users:")) {
-        loadPaymentStoreState();
-      }
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("storage", handleStorageEvent);
-      return () => window.removeEventListener("storage", handleStorageEvent);
-    }
-
-    return undefined;
-  }, [loadPaymentStoreState]);
 
   useRealtimeTables({
     tables: [
