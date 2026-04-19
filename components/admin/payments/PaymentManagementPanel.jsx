@@ -4,17 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { PAYMENT_METHOD_TYPES, PAYMENT_STATUS } from "@/types/dashboardModels";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import {
-  addPaymentMethod,
-  deletePaymentMethod,
-  getPaymentMethods,
-  getPaymentPlans,
-  savePaymentMethods,
-  savePaymentPlans,
-  updatePaymentMethod,
-} from "@/services/paymentStore";
-import {
   approvePaymentAndGrantAccessShared,
+  listPaymentSettingsShared,
   listPaymentsShared,
+  migrateLocalPaymentSettingsToRemote,
+  savePaymentSettingsShared,
   updatePaymentRequestStatusShared,
 } from "@/services/dashboardDataService";
 
@@ -37,23 +31,38 @@ function StatusBadge({ status }) {
 export default function PaymentManagementPanel() {
   const { isLight } = useTheme();
   const [activeTab, setActiveTab] = useState("requests");
-  const [plans, setPlans] = useState(() => getPaymentPlans());
-  const [methods, setMethods] = useState(() => getPaymentMethods());
+  const [plans, setPlans] = useState([]);
+  const [methods, setMethods] = useState([]);
   const [requests, setRequests] = useState([]);
-  const [pricingForm, setPricingForm] = useState(() =>
-    getPaymentPlans().reduce((acc, plan) => {
-      acc[`${plan.id}-price`] = plan.price;
-      acc[`${plan.id}-label`] = plan.label;
-      acc[`${plan.id}-description`] = plan.description;
-      return acc;
-    }, {}),
-  );
+  const [pricingForm, setPricingForm] = useState({});
   const [methodForm, setMethodForm] = useState({ name: "", accountName: "", accountNumber: "", qrCode: "", type: PAYMENT_METHOD_TYPES.E_WALLET });
   const [editingMethodId, setEditingMethodId] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
-    const loadRequests = async () => {
+    const initialize = async () => {
+      try {
+        await migrateLocalPaymentSettingsToRemote();
+      } catch (error) {
+        console.warn("Unable to migrate local payment settings to remote:", error);
+      }
+
+      try {
+        const settings = await listPaymentSettingsShared({ forceReload: true });
+        setPlans(settings.plans);
+        setMethods(settings.methods);
+        setPricingForm(
+          (settings.plans || []).reduce((acc, plan) => {
+            acc[`${plan.id}-price`] = plan.price;
+            acc[`${plan.id}-label`] = plan.label;
+            acc[`${plan.id}-description`] = plan.description;
+            return acc;
+          }, {}),
+        );
+      } catch (error) {
+        console.warn("Unable to load payment settings:", error);
+      }
+
       try {
         const payments = await listPaymentsShared();
         setRequests(payments);
@@ -62,37 +71,7 @@ export default function PaymentManagementPanel() {
       }
     };
 
-    loadRequests();
-
-    const handleStorageChange = async (event) => {
-      if (!event.key) return;
-      if (event.key.startsWith("payment:") || event.key.startsWith("users:")) {
-        const nextPlans = getPaymentPlans();
-        const nextMethods = getPaymentMethods();
-        setPlans(nextPlans);
-        setMethods(nextMethods);
-        setPricingForm(
-          nextPlans.reduce((acc, plan) => {
-            acc[`${plan.id}-price`] = plan.price;
-            acc[`${plan.id}-label`] = plan.label;
-            acc[`${plan.id}-description`] = plan.description;
-            return acc;
-          }, {}),
-        );
-        try {
-          const payments = await listPaymentsShared();
-          setRequests(payments);
-        } catch (error) {
-          console.warn("Unable to reload payment requests:", error);
-        }
-      }
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("storage", handleStorageChange);
-      return () => window.removeEventListener("storage", handleStorageChange);
-    }
-    return undefined;
+    void initialize();
   }, []);
 
   const pendingRequests = useMemo(
@@ -104,16 +83,23 @@ export default function PaymentManagementPanel() {
     setPricingForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const savePricingChanges = () => {
+  const savePricingChanges = async () => {
     const updatedPlans = plans.map((plan) => ({
       ...plan,
       price: Number(pricingForm[`${plan.id}-price`] || plan.price),
       label: String(pricingForm[`${plan.id}-label`] || plan.label),
       description: String(pricingForm[`${plan.id}-description`] || plan.description),
     }));
-    savePaymentPlans(updatedPlans);
-    setPlans(updatedPlans);
-    setStatusMessage("Pricing settings updated.");
+
+    try {
+      const saved = await savePaymentSettingsShared({ plans: updatedPlans, methods });
+      setPlans(saved.plans);
+      setMethods(saved.methods);
+      setStatusMessage("Pricing settings updated.");
+    } catch (error) {
+      console.error("Unable to save pricing settings:", error);
+      setStatusMessage("Unable to save pricing settings.");
+    }
   };
 
   const readImageAsDataUrl = (file) =>
@@ -144,42 +130,62 @@ export default function PaymentManagementPanel() {
     setMethodForm({ name: "", accountName: "", accountNumber: "", qrCode: "", type: PAYMENT_METHOD_TYPES.E_WALLET });
   };
 
-  const saveMethod = () => {
+  const saveMethod = async () => {
     if (!methodForm.name.trim() || !methodForm.accountName.trim() || !methodForm.accountNumber.trim()) {
       setStatusMessage("Payment method name, account name, and account number are required.");
       return;
     }
 
-    if (editingMethodId) {
-      const updated = updatePaymentMethod(editingMethodId, {
-        name: methodForm.name,
-        accountName: methodForm.accountName,
-        accountNumber: methodForm.accountNumber,
-        qrCode: methodForm.qrCode,
-        type: methodForm.type,
-        label: methodForm.name,
-      });
-      setMethods(getPaymentMethods());
-      setStatusMessage(`Updated payment method ${updated?.name || "method"}.`);
-    } else {
-      const added = addPaymentMethod({
-        name: methodForm.name,
-        accountName: methodForm.accountName,
-        accountNumber: methodForm.accountNumber,
-        qrCode: methodForm.qrCode,
-        type: methodForm.type,
-      });
-      setMethods(getPaymentMethods());
-      setStatusMessage(`Added payment method ${added.name}.`);
-    }
+    const updatedMethods = editingMethodId
+      ? methods.map((method) =>
+          method.id === editingMethodId
+            ? {
+                ...method,
+                name: methodForm.name,
+                accountName: methodForm.accountName,
+                accountNumber: methodForm.accountNumber,
+                qrCode: methodForm.qrCode,
+                type: methodForm.type,
+                label: methodForm.name,
+              }
+            : method,
+        )
+      : [
+          ...methods,
+          {
+            id: methodForm.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `method-${Date.now()}`,
+            name: methodForm.name,
+            accountName: methodForm.accountName,
+            accountNumber: methodForm.accountNumber,
+            qrCode: methodForm.qrCode,
+            type: methodForm.type,
+            label: methodForm.name,
+          },
+        ];
 
-    cancelEditMethod();
+    try {
+      const saved = await savePaymentSettingsShared({ plans, methods: updatedMethods });
+      setPlans(saved.plans);
+      setMethods(saved.methods);
+      setStatusMessage(`Saved payment method ${methodForm.name}.`);
+      cancelEditMethod();
+    } catch (error) {
+      console.error("Unable to save payment method:", error);
+      setStatusMessage("Unable to save payment method.");
+    }
   };
 
-  const removeMethod = (methodId) => {
-    deletePaymentMethod(methodId);
-    setMethods(getPaymentMethods());
-    setStatusMessage("Payment method removed.");
+  const removeMethod = async (methodId) => {
+    const updatedMethods = methods.filter((method) => method.id !== methodId);
+    try {
+      const saved = await savePaymentSettingsShared({ plans, methods: updatedMethods });
+      setPlans(saved.plans);
+      setMethods(saved.methods);
+      setStatusMessage("Payment method removed.");
+    } catch (error) {
+      console.error("Unable to remove payment method:", error);
+      setStatusMessage("Unable to remove payment method.");
+    }
   };
 
   const handleRequestAction = async (requestId, status) => {

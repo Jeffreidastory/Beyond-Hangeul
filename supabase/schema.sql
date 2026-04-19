@@ -273,6 +273,31 @@ create policy "Admins can create notifications"
   to authenticated
   with check (public.is_admin());
 
+create table if not exists public.payment_settings (
+  key text primary key,
+  plans jsonb not null default '[]'::jsonb,
+  methods jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.payment_settings enable row level security;
+
+drop policy if exists "Authenticated users can read payment settings" on public.payment_settings;
+create policy "Authenticated users can read payment settings"
+  on public.payment_settings
+  for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Admins can manage payment settings" on public.payment_settings;
+create policy "Admins can manage payment settings"
+  on public.payment_settings
+  for all
+  to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+
 create table if not exists public.module_file_progress (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,

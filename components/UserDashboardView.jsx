@@ -47,12 +47,9 @@ import {
   updateResourceNote,
   listNotificationsShared,
   markAllNotificationsReadShared,
+  listPaymentSettingsShared,
+  migrateLocalPaymentSettingsToRemote,
 } from "@/services/dashboardDataService";
-import {
-  clearLocalPaymentStore,
-  getPaymentMethods,
-  getPaymentPlans,
-} from "@/services/paymentStore";
 import UserPathTimeline from "@/components/path/UserPathTimeline";
 import HeroLearningCard from "@/components/user/dashboard/HeroLearningCard";
 import LearningSummaryCards from "@/components/user/dashboard/LearningSummaryCards";
@@ -412,11 +409,24 @@ export default function UserDashboardView({
     }
   }, [userId]);
 
-  const loadPaymentStoreState = useCallback(() => {
-    const plans = getPaymentPlans();
-    const methods = getPaymentMethods();
-    setPaymentPlans(plans);
-    setPaymentMethods(methods);
+  const loadPaymentStoreState = useCallback(async () => {
+    try {
+      const settings = await listPaymentSettingsShared();
+      const plans = settings.plans || [];
+      const methods = settings.methods || [];
+      setPaymentPlans(plans);
+      setPaymentMethods(methods);
+      setSelectedPlanId((current) => current || plans[0]?.id || "lifetime");
+      setPaymentMethod((current) =>
+        current || methods.find((method) => method.id === "gcash")?.id || methods[0]?.id || "gcash"
+      );
+    } catch (error) {
+      console.warn("Unable to load payment settings:", error);
+      setPaymentPlans([]);
+      setPaymentMethods([]);
+      setSelectedPlanId((current) => current || "lifetime");
+      setPaymentMethod((current) => current || "gcash");
+    }
 
     const activeRequests = initialLearningData?.payments || [];
     setPaymentRequests(activeRequests);
@@ -442,11 +452,6 @@ export default function UserDashboardView({
     } else {
       setSubscription(null);
     }
-
-    setSelectedPlanId((current) => current || plans[0]?.id || "lifetime");
-    setPaymentMethod((current) =>
-      current || methods.find((method) => method.id === "gcash")?.id || methods[0]?.id || "gcash"
-    );
   }, [initialLearningData?.payments]);
 
   const loadDashboardData = useCallback(async () => {
@@ -488,9 +493,14 @@ export default function UserDashboardView({
   useEffect(() => {
     const startup = async () => {
       if (userId) {
-        clearLocalPaymentStore();
+        try {
+          await migrateLocalPaymentSettingsToRemote();
+        } catch (error) {
+          console.warn("Unable to migrate local payment settings:", error);
+        }
       }
-      loadPaymentStoreState();
+
+      await loadPaymentStoreState();
       void loadRemotePaymentState();
       void loadDashboardData();
       void loadNotifications();

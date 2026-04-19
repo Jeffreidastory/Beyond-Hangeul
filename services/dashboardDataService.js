@@ -1903,6 +1903,174 @@ export async function deleteModuleShared(moduleId) {
   if (error) throw error;
 }
 
+const PAYMENT_SETTINGS_KEY = "payment-settings";
+
+const DEFAULT_PAYMENT_SETTINGS = {
+  plans: [
+    {
+      id: "lifetime",
+      name: "Lifetime Access",
+      price: 349,
+      billingCycle: "lifetime",
+      label: "Lifetime Access",
+      description: "One-time payment for lifetime premium access to all content.",
+      featured: true,
+    },
+  ],
+  methods: [
+    {
+      id: "gcash",
+      name: "GCash",
+      accountName: "Aira Mae Araneta",
+      accountNumber: "09089740724",
+      type: "e-wallet",
+      label: "GCash",
+      qrCode: "",
+    },
+    {
+      id: "gotyme",
+      name: "GoTyme",
+      accountName: "Beyond Hangul",
+      accountNumber: "09171234567",
+      type: "e-wallet",
+      label: "GoTyme",
+      qrCode: "",
+    },
+    {
+      id: "bdo",
+      name: "BDO",
+      accountName: "Beyond Hangul",
+      accountNumber: "1234567890",
+      type: "bank",
+      label: "BDO",
+      qrCode: "",
+    },
+  ],
+};
+
+function normalizeSettingsPlan(plan) {
+  return {
+    id: String(plan?.id || "lifetime"),
+    name: String(plan?.name || "Lifetime Access"),
+    price: Number(plan?.price || 349),
+    billingCycle: String(plan?.billingCycle || "lifetime"),
+    label: String(plan?.label || plan?.name || "Lifetime Access"),
+    description: String(plan?.description || ""),
+    featured: Boolean(plan?.featured),
+  };
+}
+
+function normalizeSettingsMethod(method) {
+  return {
+    id: String(method?.id || "payment-method"),
+    name: String(method?.name || "Payment Method"),
+    accountName: String(method?.accountName || ""),
+    accountNumber: String(method?.accountNumber || ""),
+    type: String(method?.type || "e-wallet"),
+    label: String(method?.label || method?.name || "Payment Method"),
+    qrCode: String(method?.qrCode || ""),
+  };
+}
+
+async function fetchPaymentSettingsRow() {
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("payment_settings")
+    .select("key, plans, methods")
+    .eq("key", PAYMENT_SETTINGS_KEY)
+    .maybeSingle();
+  if (error) {
+    throw error;
+  }
+  return data || null;
+}
+
+export async function listPaymentSettingsShared({ forceReload = false } = {}) {
+  if (!forceReload && adminCache.paymentSettings) {
+    return adminCache.paymentSettings;
+  }
+
+  try {
+    const row = await fetchPaymentSettingsRow();
+    const settings = {
+      plans: (row?.plans || DEFAULT_PAYMENT_SETTINGS.plans).map(normalizeSettingsPlan),
+      methods: (row?.methods || DEFAULT_PAYMENT_SETTINGS.methods).map(normalizeSettingsMethod),
+    };
+    adminCache.paymentSettings = settings;
+    return settings;
+  } catch (error) {
+    console.warn("Payment settings fetch failed, using defaults:", error);
+    return DEFAULT_PAYMENT_SETTINGS;
+  }
+}
+
+export async function savePaymentSettingsShared(settings = {}) {
+  const nextPlans = (settings.plans || DEFAULT_PAYMENT_SETTINGS.plans).map(normalizeSettingsPlan);
+  const nextMethods = (settings.methods || DEFAULT_PAYMENT_SETTINGS.methods).map(normalizeSettingsMethod);
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("payment_settings")
+    .upsert(
+      {
+        key: PAYMENT_SETTINGS_KEY,
+        plans: nextPlans,
+        methods: nextMethods,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    )
+    .select("key, plans, methods")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const saved = {
+    plans: (data?.plans || nextPlans).map(normalizeSettingsPlan),
+    methods: (data?.methods || nextMethods).map(normalizeSettingsMethod),
+  };
+  adminCache.paymentSettings = saved;
+  return saved;
+}
+
+export async function migrateLocalPaymentSettingsToRemote() {
+  if (typeof window === "undefined") return;
+
+  const plansJson = window.localStorage.getItem("payment:plans");
+  const methodsJson = window.localStorage.getItem("payment:methods");
+  if (!plansJson && !methodsJson) return;
+
+  let localPlans = [];
+  let localMethods = [];
+  try {
+    localPlans = plansJson ? JSON.parse(plansJson) : [];
+  } catch {
+    localPlans = [];
+  }
+  try {
+    localMethods = methodsJson ? JSON.parse(methodsJson) : [];
+  } catch {
+    localMethods = [];
+  }
+
+  const row = await fetchPaymentSettingsRow();
+  if (row) {
+    window.localStorage.removeItem("payment:plans");
+    window.localStorage.removeItem("payment:methods");
+    return;
+  }
+
+  const settingsToSave = {
+    plans: localPlans.length ? localPlans : DEFAULT_PAYMENT_SETTINGS.plans,
+    methods: localMethods.length ? localMethods : DEFAULT_PAYMENT_SETTINGS.methods,
+  };
+
+  await savePaymentSettingsShared(settingsToSave);
+  window.localStorage.removeItem("payment:plans");
+  window.localStorage.removeItem("payment:methods");
+}
+
 export async function listPaymentsShared({ forceReload = false } = {}) {
   if (!forceReload && adminCache.payments) {
     return adminCache.payments;

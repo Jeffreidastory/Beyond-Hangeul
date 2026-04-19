@@ -160,48 +160,18 @@ function normalizeSubscription(subscription) {
   return normalizeLegacyPayment(normalized);
 }
 
-const PAYMENT_STORE_KEYS = {
-  plans: "payment:plans",
-  methods: "payment:methods",
-  requests: "payment:requests",
-};
-
-function isBrowser() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
 function loadList(key, fallback) {
-  if (!isBrowser()) {
-    return fallback;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      return fallback;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
+  return fallback;
 }
 
 function persistList(key, value) {
-  if (!isBrowser()) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore storage errors
-  }
+  return;
 }
 
 export function getPaymentPlans() {
-  const storedPlans = loadList(PAYMENT_STORE_KEYS.plans, paymentPlans);
-  paymentPlans = storedPlans.length ? storedPlans : [...DEFAULT_PLANS];
+  if (!paymentPlans || !paymentPlans.length) {
+    paymentPlans = [...DEFAULT_PLANS];
+  }
 
   const normalized = paymentPlans.map(normalizePlan);
   const lifetimeOnly = normalized
@@ -231,31 +201,30 @@ export function getPaymentPlans() {
 
 export function savePaymentPlans(plans = []) {
   paymentPlans = (plans || []).map(normalizePlan);
-  persistList(PAYMENT_STORE_KEYS.plans, paymentPlans);
   return paymentPlans;
 }
 
 export function getPaymentMethods() {
-  const storedMethods = loadList(PAYMENT_STORE_KEYS.methods, paymentMethods);
-  paymentMethods = storedMethods.length ? storedMethods : [...DEFAULT_METHODS];
+  if (!paymentMethods || !paymentMethods.length) {
+    paymentMethods = [...DEFAULT_METHODS];
+  }
   return paymentMethods.map(normalizeMethod);
 }
 
 export function savePaymentMethods(methods = []) {
   paymentMethods = (methods || []).map(normalizeMethod);
-  persistList(PAYMENT_STORE_KEYS.methods, paymentMethods);
   return paymentMethods;
 }
 
 export function getPaymentRequests() {
-  const storedRequests = loadList(PAYMENT_STORE_KEYS.requests, paymentRequests);
-  paymentRequests = storedRequests.length ? storedRequests : [];
+  if (!paymentRequests || !paymentRequests.length) {
+    paymentRequests = [];
+  }
   return (paymentRequests || []).map(normalizeRequest).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 }
 
 export function savePaymentRequests(requests = []) {
   paymentRequests = (requests || []).map(normalizeRequest);
-  persistList(PAYMENT_STORE_KEYS.requests, paymentRequests);
   return paymentRequests;
 }
 
