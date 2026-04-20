@@ -38,9 +38,11 @@ export default function PaymentManagementPanel() {
   const [methodForm, setMethodForm] = useState({ name: "", accountName: "", accountNumber: "", qrCode: "", type: PAYMENT_METHOD_TYPES.E_WALLET });
   const [editingMethodId, setEditingMethodId] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const initialize = async () => {
+      setIsLoading(true);
       try {
         await migrateLocalPaymentSettingsToRemote();
       } catch (error) {
@@ -64,10 +66,12 @@ export default function PaymentManagementPanel() {
       }
 
       try {
-        const payments = await listPaymentsShared();
+        const payments = await listPaymentsShared({ forceReload: true });
         setRequests(payments);
       } catch (error) {
         console.warn("Unable to load payment requests:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -189,18 +193,22 @@ export default function PaymentManagementPanel() {
   };
 
   const handleRequestAction = async (requestId, status) => {
-    if (status === PAYMENT_STATUS.APPROVED) {
-      await approvePaymentAndGrantAccessShared(requestId);
-    } else {
-      await updatePaymentRequestStatusShared(requestId, status);
-    }
+    setIsLoading(true);
     try {
+      if (status === PAYMENT_STATUS.APPROVED) {
+        await approvePaymentAndGrantAccessShared(requestId);
+      } else {
+        await updatePaymentRequestStatusShared(requestId, status);
+      }
       const payments = await listPaymentsShared({ forceReload: true });
       setRequests(payments);
+      setStatusMessage(`Request ${status === PAYMENT_STATUS.APPROVED ? "approved" : "rejected"}.`);
     } catch (error) {
       console.warn("Unable to refresh payment requests after action:", error);
+      setStatusMessage(`Unable to ${status === PAYMENT_STATUS.APPROVED ? "approve" : "reject"} request.`);
+    } finally {
+      setIsLoading(false);
     }
-    setStatusMessage(`Request ${status === PAYMENT_STATUS.APPROVED ? "approved" : "rejected"}.`);
   };
 
   return (
@@ -267,7 +275,13 @@ export default function PaymentManagementPanel() {
                 </tr>
               </thead>
               <tbody>
-                {requests.length === 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td className={`px-3 py-6 text-center ${isLight ? "text-slate-500" : "text-slate-400"}`} colSpan={8}>
+                      Loading payment requests...
+                    </td>
+                  </tr>
+                ) : requests.length === 0 ? (
                   <tr>
                     <td className={`px-3 py-6 text-center ${isLight ? "text-slate-500" : "text-slate-400"}`} colSpan={8}>
                       No payment requests found.

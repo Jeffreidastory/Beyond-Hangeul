@@ -385,9 +385,9 @@ export default function AdminWorkspace({
       if (cached.worksheets) setWorksheets(cached.worksheets);
       if (cached.payments) setPaymentRequests(cached.payments);
       if (cached.users) setUsers(cached.users);
-      setIsLoadingAdminData(false);
     }
 
+    setIsLoadingAdminData(true);
     void refreshAll(true).finally(() => {
       setIsLoadingAdminData(false);
     });
@@ -1303,14 +1303,20 @@ export default function AdminWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {filteredModules.length === 0 ? (
-                  <tr className="border-t border-white/10 bg-[#0f1d32]">
-                    <td className="px-3 py-6 text-center text-slate-400" colSpan={7}>
-                      No modules found for the current filters.
-                    </td>
-                  </tr>
-                ) : (
-                  pagedModules.map((module) => {
+            {isLoadingAdminData ? (
+              <tr className="border-t border-white/10 bg-[#0f1d32]">
+                <td className="px-3 py-6 text-center text-slate-400" colSpan={7}>
+                  Loading modules...
+                </td>
+              </tr>
+            ) : filteredModules.length === 0 ? (
+              <tr className="border-t border-white/10 bg-[#0f1d32]">
+                <td className="px-3 py-6 text-center text-slate-400" colSpan={7}>
+                  No modules found for the current filters.
+                </td>
+              </tr>
+            ) : (
+              pagedModules.map((module) => {
                     const isPaid = module.type === MODULE_TYPE.PAID;
                     const rowStatus = module.status || MODULE_STATUS.ACTIVE;
 
@@ -1466,7 +1472,13 @@ export default function AdminWorkspace({
             </tr>
           </thead>
           <tbody>
-            {worksheets
+            {isLoadingAdminData ? (
+              <tr className="border-t border-white/10 bg-[#0f1d32]">
+                <td colSpan={5} className="px-3 py-8 text-center text-slate-400">
+                  Loading worksheets...
+                </td>
+              </tr>
+            ) : worksheets
               .filter((worksheet) =>
                 worksheetFilterTab === "all"
                   ? true
@@ -1538,10 +1550,10 @@ export default function AdminWorkspace({
   const renderUsers = () => (
     <SectionCard title="Users" subtitle="Manage account roles, learning access, and premium entitlement clearly.">
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard icon="👤" label="Total Accounts" value={usersSummary.totalAccounts} tone="slate" />
-        <SummaryCard icon="🧑‍🎓" label="Total Users" value={usersSummary.totalUsers} tone="sky" />
-        <SummaryCard icon="💎" label="Premium Users" value={usersSummary.premiumUsers} tone="emerald" />
-        <SummaryCard icon="🛡️" label="Admin Accounts" value={usersSummary.adminAccounts} tone="amber" />
+        <SummaryCard icon="👤" label="Total Accounts" value={usersSummary.totalAccounts} tone="slate" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="🧑‍🎓" label="Total Users" value={usersSummary.totalUsers} tone="sky" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="💎" label="Premium Users" value={usersSummary.premiumUsers} tone="emerald" isLoading={isLoadingAdminData} />
+        <SummaryCard icon="🛡️" label="Admin Accounts" value={usersSummary.adminAccounts} tone="amber" isLoading={isLoadingAdminData} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -1586,7 +1598,13 @@ export default function AdminWorkspace({
             </tr>
           </thead>
           <tbody>
-            {filteredUserRows.length === 0 ? (
+            {isLoadingAdminData ? (
+              <tr className="border-t border-white/10 bg-[#0f1d32]">
+                <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+                  Loading user accounts...
+                </td>
+              </tr>
+            ) : filteredUserRows.length === 0 ? (
               <tr className="border-t border-white/10 bg-[#0f1d32]">
                 <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
                   No user accounts found for the current filters.

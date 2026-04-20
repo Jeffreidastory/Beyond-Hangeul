@@ -2335,8 +2335,7 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
     }
 
     const result = users.map((user) => {
-          const subscription = getUserSubscription(user.id);
-      const userPayments = payments
+          const userPayments = payments
         .filter((payment) => payment.userId === user.id)
         .sort((left, right) => new Date(right.submittedAt || right.approvedAt || 0).getTime() - new Date(left.submittedAt || left.approvedAt || 0).getTime());
       const latestSubscriptionRequest = userPayments[0] || null;
@@ -2345,10 +2344,7 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
         (payment) => payment.status === PAYMENT_STATUS.APPROVED
       );
       const latestApprovedPayment = approvedPaymentsForUser[0] || null;
-
-      const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
-      const hasApprovedPayment = Boolean(latestApprovedPayment);
-      const premiumAccessAllowed = hasActiveSubscription || hasApprovedPayment;
+      const premiumAccessAllowed = Boolean(latestApprovedPayment);
 
       const unlockedModuleIds = new Set(
         accessRows
@@ -2368,19 +2364,19 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
       );
       const paymentRecords = userPayments;
 
-      const effectiveSubscription = premiumAccessAllowed && !hasActiveSubscription
+      const effectiveSubscription = latestApprovedPayment
         ? {
             status: PAYMENT_STATUS.APPROVED,
             planId: "lifetime",
             planLabel: "Lifetime Access",
-            amount: Number(latestApprovedPayment?.amount || 0),
-            reference: latestApprovedPayment?.id || "",
-            requestId: latestApprovedPayment?.id || null,
-            submittedAt: latestApprovedPayment?.submittedAt || null,
-            approvedAt: latestApprovedPayment?.approvedAt || null,
-            updatedAt: latestApprovedPayment?.approvedAt || null,
+            amount: Number(latestApprovedPayment.amount || 0),
+            reference: latestApprovedPayment.reference || "",
+            requestId: latestApprovedPayment.id || null,
+            submittedAt: latestApprovedPayment.submittedAt || null,
+            approvedAt: latestApprovedPayment.approvedAt || null,
+            updatedAt: latestApprovedPayment.approvedAt || null,
           }
-        : subscription;
+        : null;
 
       return {
         ...user,
@@ -2509,7 +2505,6 @@ export async function getUserLearningDataShared(userId) {
         .map((access) => [access.moduleId, access.status])
     );
 
-    const subscription = getUserSubscription(userId);
     const approvedPayments = payments.filter((payment) => payment.status === PAYMENT_STATUS.APPROVED);
     const latestApprovedPayment = approvedPayments
       .sort(
@@ -2517,9 +2512,7 @@ export async function getUserLearningDataShared(userId) {
           new Date(right.approvedAt || right.submittedAt || 0).getTime() -
           new Date(left.approvedAt || left.submittedAt || 0).getTime(),
       )[0] || null;
-    const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
-    const hasApprovedPayment = Boolean(latestApprovedPayment);
-    const premiumAccessAllowed = hasActiveSubscription || hasApprovedPayment;
+    const premiumAccessAllowed = Boolean(latestApprovedPayment);
 
     const modulesWithAccess = modules.map((module) => {
       const isFree = module.type === MODULE_TYPE.FREE;
