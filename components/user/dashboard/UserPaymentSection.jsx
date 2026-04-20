@@ -147,18 +147,18 @@ export default function UserPaymentSection({
                 <button
                   type="button"
                   onClick={() => {
-                    if (isActive) return;
+                    if (isActive || isPending) return;
                     onSelectPlan(plan.id);
                     onOpenModal();
                   }}
-                  disabled={isActive}
+                  disabled={isActive || isPending}
                   className={`mt-6 w-full rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                    isActive
+                    isActive || isPending
                       ? "bg-slate-500 text-slate-200 cursor-not-allowed"
                       : "bg-amber-400 text-[#0b1728] hover:bg-amber-300"
                   }`}
                 >
-                  {isActive ? "Subscribed" : "Purchase Lifetime Access"}
+                  {isActive ? "Subscribed" : isPending ? "Pending Review" : "Purchase Lifetime Access"}
                 </button>
               </div>
             ))}

@@ -1179,8 +1179,8 @@ export default function UserDashboardView({
   };
 
   const submitPayment = async () => {
-    if (subscription?.status === PAYMENT_STATUS.PENDING) {
-      setPaymentNotice("Payment already submitted. Please wait for admin review.");
+    if (subscription?.status === PAYMENT_STATUS.PENDING || latestPaymentRequest?.status === PAYMENT_STATUS.PENDING) {
+      setPaymentNotice("Payment already submitted and is pending review. Please wait for admin approval.");
       return;
     }
 
