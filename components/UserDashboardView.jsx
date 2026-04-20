@@ -187,6 +187,7 @@ export default function UserDashboardView({
   const [proofFile, setProofFile] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [paymentNotice, setPaymentNotice] = useState("");
+  const [isSubmittingPaymentProof, setIsSubmittingPaymentProof] = useState(false);
   const [worksheetNotice, setWorksheetNotice] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedWorksheetId, setSelectedWorksheetId] = useState("");
@@ -1189,48 +1190,66 @@ export default function UserDashboardView({
     }
 
     const selectedPlan = paymentPlans.find((plan) => plan.id === selectedPlanId);
-    const selectedMethod = paymentMethods.find((method) => method.id === paymentMethod);
+    const selectedMethod = paymentMethods.find((method) => method.id === paymentMethod) || paymentMethods[0];
 
-    const paymentResult = await submitPaymentProofShared({
-      userId,
-      userEmail,
-      userName,
-      planId: selectedPlanId,
-      plan: selectedPlan,
-      amount: selectedPlan?.price || 0,
-      method: selectedMethod,
-      reference: referenceNumber,
-      proofImage,
-    });
-
-    setPaymentRequests((prev) => [paymentResult, ...prev.filter((item) => item.id !== paymentResult.id)]);
-
-    if (paymentResult?.status === PAYMENT_STATUS.APPROVED) {
-      setSubscription({
-        status: PAYMENT_STATUS.APPROVED,
-        planId: "lifetime",
-        planLabel: "Lifetime Access",
-        amount: Number(paymentResult.amount || 0),
-        reference: paymentResult.id,
-        submittedAt: paymentResult.submittedAt || null,
-        approvedAt: paymentResult.approvedAt || null,
-      });
-    }
-
-    if (paymentResult?.blocked) {
-      if (paymentResult.blockReason === "already-active") {
-        setPaymentNotice("Subscription is already active. No new payment proof is required.");
-      } else if (paymentResult.blockReason === "pending-verification") {
-        setPaymentNotice("Payment already submitted. Please wait for admin review.");
-      }
+    if (!selectedMethod) {
+      setPaymentNotice("Please choose a payment method before uploading proof.");
       return;
     }
 
-    setPaymentNotice("Payment proof submitted. Waiting for admin review.");
-    setProofFile(null);
-    setProofImage("");
-    setReferenceNumber("");
-    setPaymentModalOpen(false);
+    setIsSubmittingPaymentProof(true);
+    setPaymentNotice("Uploading payment proof...");
+
+    try {
+      const paymentResult = await submitPaymentProofShared({
+        userId,
+        userEmail,
+        userName,
+        planId: selectedPlanId,
+        plan: selectedPlan,
+        amount: selectedPlan?.price || 0,
+        method: selectedMethod,
+        reference: referenceNumber,
+        proofImage,
+      });
+
+      setPaymentRequests((prev) => [paymentResult, ...prev.filter((item) => item.id !== paymentResult.id)]);
+
+      if (paymentResult?.status === PAYMENT_STATUS.APPROVED) {
+        setSubscription({
+          status: PAYMENT_STATUS.APPROVED,
+          planId: "lifetime",
+          planLabel: "Lifetime Access",
+          amount: Number(paymentResult.amount || 0),
+          reference: paymentResult.id,
+          submittedAt: paymentResult.submittedAt || null,
+          approvedAt: paymentResult.approvedAt || null,
+        });
+      }
+
+      if (paymentResult?.blocked) {
+        if (paymentResult.blockReason === "already-active") {
+          setPaymentNotice("Subscription is already active. No new payment proof is required.");
+        } else if (paymentResult.blockReason === "pending-verification") {
+          setPaymentNotice("Payment already submitted. Please wait for admin review.");
+        }
+        return;
+      }
+
+      setPaymentNotice("Payment proof submitted. Waiting for admin review.");
+      setProofFile(null);
+      setProofImage("");
+      setReferenceNumber("");
+      setPaymentModalOpen(false);
+    } catch (error) {
+      console.error("Payment proof upload failed:", error);
+      setPaymentNotice(
+        error?.message ||
+          "Upload failed. Please try again or contact support if the problem persists."
+      );
+    } finally {
+      setIsSubmittingPaymentProof(false);
+    }
   };
 
   useEffect(() => {
@@ -1815,6 +1834,7 @@ export default function UserDashboardView({
           onUploadProof={uploadProof}
           onSubmitProof={submitPayment}
           notice={paymentNotice}
+          isUploading={isSubmittingPaymentProof}
           isLight={isLight}
         />
       );

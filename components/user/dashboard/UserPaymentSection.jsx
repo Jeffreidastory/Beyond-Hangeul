@@ -29,6 +29,7 @@ export default function UserPaymentSection({
   onUploadProof,
   onSubmitProof,
   notice,
+  isUploading,
   isLight,
 }) {
   const lifetimePlans = useMemo(
@@ -286,9 +287,21 @@ export default function UserPaymentSection({
                 <button
                   type="button"
                   onClick={onSubmitProof}
-                  className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-[#0b1728] hover:bg-amber-300"
+                  disabled={isUploading}
+                  className={`relative overflow-hidden rounded-xl px-4 py-2 text-sm font-semibold text-[#0b1728] transition ${
+                    isUploading
+                      ? "cursor-not-allowed bg-amber-300 text-slate-900"
+                      : "bg-amber-400 hover:bg-amber-300"
+                  }`}
                 >
-                  Upload Payment Proof
+                  {isUploading ? (
+                    <>
+                      <span className="absolute inset-0 bg-gradient-to-r from-white/20 via-white/40 to-white/20 opacity-80 animate-upload-sweep" />
+                      <span className="relative">Uploading...</span>
+                    </>
+                  ) : (
+                    "Upload Payment Proof"
+                  )}
                 </button>
                 <button
                   type="button"
@@ -298,6 +311,9 @@ export default function UserPaymentSection({
                   Cancel
                 </button>
               </div>
+              {isUploading ? (
+                <style>{`@keyframes upload-sweep { 0% { transform: translateX(-110%); } 100% { transform: translateX(110%); } } .animate-upload-sweep { animation: upload-sweep 1s linear infinite; }`}</style>
+              ) : null}
 
               {notice ? <p className="text-sm text-emerald-400">{notice}</p> : null}
             </div>
