@@ -5,6 +5,7 @@ export function subscribeToTables({
   onChange,
   schema = "public",
   channelName,
+  filters = {},
 }) {
   if (!Array.isArray(tables) || !tables.length || typeof onChange !== "function") {
     return () => {};
@@ -18,11 +19,15 @@ export function subscribeToTables({
   const channel = supabase.channel(normalizedChannelName);
 
   uniqueTables.forEach((table) => {
-    channel.on(
-      "postgres_changes",
-      { event: "*", schema, table },
-      onChange
-    );
+    const tableFilters = Array.isArray(filters[table]) ? filters[table] : [];
+    const query = {
+      event: "*",
+      schema,
+      table,
+      ...(tableFilters.length ? { filter: tableFilters } : {}),
+    };
+
+    channel.on("postgres_changes", query, onChange);
   });
 
   channel.subscribe();

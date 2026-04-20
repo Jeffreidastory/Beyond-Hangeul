@@ -512,6 +512,74 @@ export default function UserDashboardView({
   }, [userId, loadDashboardData, loadNotifications, loadModuleFileProgress, loadPaymentStoreState, loadRemotePaymentState]);
 
 
+  const handleRealtimeEvent = useCallback(
+    (payload) => {
+      if (!payload || !payload.table || !payload.eventType) return;
+      const table = payload.table;
+      const eventType = payload.eventType;
+      const record = payload.record || payload.new || {};
+
+      if (table === "payment_records" && record.user_id === userId) {
+        const normalized = {
+          id: record.id,
+          userId: record.user_id,
+          userEmail: record.user_email || "",
+          userName: record.user_name || "Learner",
+          moduleId: record.module_id || "",
+          amount: Number(record.amount || 0),
+          method: record.method || "",
+          proofImage: record.proof_image || "",
+          receiptImage: record.proof_image || "",
+          reference: record.reference || "",
+          status: record.status || PAYMENT_STATUS.PENDING,
+          submittedAt: record.submitted_at,
+          approvedAt: record.approved_at || "",
+        };
+
+        setPaymentRequests((prev) => {
+          const filtered = prev.filter((item) => item.id !== normalized.id);
+          if (eventType === "DELETE") {
+            return filtered;
+          }
+          return [normalized, ...filtered];
+        });
+
+        if (normalized.status === PAYMENT_STATUS.APPROVED) {
+          setSubscription({
+            status: PAYMENT_STATUS.APPROVED,
+            planId: "lifetime",
+            planLabel: "Lifetime Access",
+            amount: Number(normalized.amount || 0),
+            reference: normalized.id,
+            submittedAt: normalized.submittedAt || null,
+            approvedAt: normalized.approvedAt || null,
+          });
+        }
+      }
+
+      if (table === "user_module_access" && record.user_id === userId) {
+        void loadDashboardData();
+      }
+
+      if (table === "profiles" && record.id === userId) {
+        void loadDashboardData();
+      }
+
+      if (realtimeReloadTimerRef.current) {
+        clearTimeout(realtimeReloadTimerRef.current);
+      }
+
+      realtimeReloadTimerRef.current = setTimeout(() => {
+        realtimeReloadTimerRef.current = null;
+        void loadDashboardData();
+        void loadRemotePaymentState();
+        void loadModuleFileProgress();
+        void loadNotifications(false);
+      }, 120);
+    },
+    [loadDashboardData, loadModuleFileProgress, loadNotifications, loadRemotePaymentState, userId],
+  );
+
   useRealtimeTables({
     tables: [
       "learning_modules",
@@ -527,20 +595,14 @@ export default function UserDashboardView({
       "module_file_progress",
       "notifications",
     ],
-    channelName: `user-dashboard-${userId}`,
-    onChange: () => {
-      if (realtimeReloadTimerRef.current) {
-        clearTimeout(realtimeReloadTimerRef.current);
-      }
-
-      realtimeReloadTimerRef.current = setTimeout(() => {
-        realtimeReloadTimerRef.current = null;
-        void loadDashboardData();
-        void loadRemotePaymentState();
-        void loadModuleFileProgress();
-        void loadNotifications(false);
-      }, 120);
+    filters: {
+      payment_records: [`user_id=eq.${userId}`],
+      user_module_access: [`user_id=eq.${userId}`],
+      profiles: [`id=eq.${userId}`],
+      notifications: [`user_id=eq.${userId}`],
     },
+    channelName: `user-dashboard-${userId}`,
+    onChange: handleRealtimeEvent,
   });
 
   useEffect(() => {
