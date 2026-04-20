@@ -15,6 +15,7 @@ export default function PaymentProofModal({ payment, moduleName, onClose, onAppr
           <p>User: {payment.userName || payment.userEmail}</p>
           <p>Module: {moduleName || "Unknown Module"}</p>
           <p>Amount: ₱{Number(payment.amount || 150).toFixed(2)}</p>
+          <p>Reference: {payment.reference || "—"}</p>
           <p>Method: {payment.method || "GCash"}</p>
           <p>Verification Status: {payment.status}</p>
           <p>Submitted: {payment.submittedAt ? new Date(payment.submittedAt).toLocaleString() : "-"}</p>

@@ -298,6 +298,8 @@ create policy "Admins can manage payment settings"
   using (public.is_admin())
   with check (public.is_admin());
 
+alter table public.payment_records add column if not exists reference text not null default '';
+
 create table if not exists public.module_file_progress (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,

@@ -1309,6 +1309,26 @@ function mapWorksheetRowToModel(row) {
   });
 }
 
+function normalizePaymentMethodField(method) {
+  if (typeof method === "string") {
+    try {
+      const parsed = JSON.parse(method);
+      if (parsed && typeof parsed === "object") {
+        return String(parsed.label || parsed.name || parsed.id || method);
+      }
+    } catch {
+      // ignore invalid JSON
+    }
+    return String(method || "GCash");
+  }
+
+  if (typeof method === "object" && method !== null) {
+    return String(method.label || method.name || method.id || "GCash");
+  }
+
+  return String(method || "GCash");
+}
+
 function mapPaymentRowToModel(row) {
   return {
     id: row.id,
@@ -1317,9 +1337,10 @@ function mapPaymentRowToModel(row) {
     userName: row.user_name || "Learner",
     moduleId: row.module_id || ONE_TIME_PREMIUM_MODULE_ID,
     amount: Number(row.amount || 150),
-    method: row.method || "GCash",
+    method: normalizePaymentMethodField(row.method),
     proofImage: row.proof_image || "",
     receiptImage: row.proof_image || "",
+    reference: row.reference || "",
     status: row.status || PAYMENT_STATUS.PENDING,
     submittedAt: row.submitted_at,
     approvedAt: row.approved_at || "",
@@ -2080,7 +2101,7 @@ export async function listPaymentsShared({ forceReload = false } = {}) {
     const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
       .from("payment_records")
-      .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
+      .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
       .order("submitted_at", { ascending: false });
 
     if (error) {
@@ -2103,7 +2124,7 @@ export async function submitPaymentProofShared(payload) {
 
     const { data: approvedRows, error: approvedError } = await supabase
       .from("payment_records")
-      .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
+      .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
       .eq("user_id", payload.userId)
       .eq("status", PAYMENT_STATUS.APPROVED)
       .order("submitted_at", { ascending: false })
@@ -2122,7 +2143,7 @@ export async function submitPaymentProofShared(payload) {
 
     const { data: pendingRows, error: pendingError } = await supabase
       .from("payment_records")
-      .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
+      .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
       .eq("user_id", payload.userId)
       .eq("status", PAYMENT_STATUS.PENDING)
       .order("submitted_at", { ascending: false })
@@ -2149,10 +2170,11 @@ export async function submitPaymentProofShared(payload) {
         module_id: paymentModuleId,
         amount: Number(payload.amount || 150),
         method: payload.method,
+        reference: payload.reference || "",
         proof_image: incomingProof,
         status: PAYMENT_STATUS.PENDING,
       })
-      .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
+      .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
       .single();
 
     if (createError) throw createError;
@@ -2280,7 +2302,7 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
     const [paymentsResult, accessResult] = await Promise.all([
       supabase
         .from("payment_records")
-        .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
+        .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
         .order("submitted_at", { ascending: false }),
       supabase
         .from("user_module_access")
@@ -2313,20 +2335,16 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
     }
 
     const result = users.map((user) => {
-      const subscription = getUserSubscription(user.id);
-      const subscriptionRequests = getPaymentRequests().filter((request) => request.userId === user.id);
-      const localLatestSubscriptionRequest = subscriptionRequests
-        .sort((left, right) => new Date(right.submittedAt).getTime() - new Date(left.submittedAt).getTime())[0] || null;
+          const subscription = getUserSubscription(user.id);
+      const userPayments = payments
+        .filter((payment) => payment.userId === user.id)
+        .sort((left, right) => new Date(right.submittedAt || right.approvedAt || 0).getTime() - new Date(left.submittedAt || left.approvedAt || 0).getTime());
+      const latestSubscriptionRequest = userPayments[0] || null;
 
-      const approvedPaymentsForUser = payments.filter(
-        (payment) => payment.userId === user.id && payment.status === PAYMENT_STATUS.APPROVED
+      const approvedPaymentsForUser = userPayments.filter(
+        (payment) => payment.status === PAYMENT_STATUS.APPROVED
       );
-      const latestApprovedPayment = approvedPaymentsForUser
-        .sort((left, right) => new Date(right.approvedAt || right.submittedAt || 0).getTime() - new Date(left.approvedAt || left.submittedAt || 0).getTime())[0] || null;
-
-      const latestSubscriptionRequest = [localLatestSubscriptionRequest, latestApprovedPayment]
-        .filter(Boolean)
-        .sort((left, right) => new Date(right.submittedAt || right.approvedAt || 0).getTime() - new Date(left.submittedAt || left.approvedAt || 0).getTime())[0] || null;
+      const latestApprovedPayment = approvedPaymentsForUser[0] || null;
 
       const hasActiveSubscription = subscription?.status === "active" && subscription.expiryDate && new Date(subscription.expiryDate) > new Date();
       const hasApprovedPayment = Boolean(latestApprovedPayment);
@@ -2345,12 +2363,10 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
       }
 
       const unlockedModules = modules.filter((module) => unlockedModuleIds.has(module.id));
-      const pendingPayments = payments.filter(
-        (payment) => payment.userId === user.id && payment.status === PAYMENT_STATUS.PENDING
+      const pendingPayments = userPayments.filter(
+        (payment) => payment.status === PAYMENT_STATUS.PENDING
       );
-      const paymentRecords = payments
-        .filter((payment) => payment.userId === user.id)
-        .sort((a, b) => new Date(b.submittedAt || 0).getTime() - new Date(a.submittedAt || 0).getTime());
+      const paymentRecords = userPayments;
 
       const effectiveSubscription = premiumAccessAllowed && !hasActiveSubscription
         ? {
@@ -2411,7 +2427,7 @@ export async function getUserLearningDataShared(userId) {
         .eq("user_id", userId),
       supabase
         .from("payment_records")
-        .select("id, user_id, user_email, user_name, module_id, amount, method, proof_image, status, submitted_at, approved_at")
+        .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
         .eq("user_id", userId)
         .order("submitted_at", { ascending: false }),
       listLearningPathsShared(),

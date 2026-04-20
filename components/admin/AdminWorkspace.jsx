@@ -32,7 +32,6 @@ import {
   updateModuleShared,
   updateWorksheetShared,
 } from "@/services/dashboardDataService";
-import { getPaymentRequests } from "@/services/paymentStore";
 import SummaryCard from "@/components/admin/cards/SummaryCard";
 import PendingPaymentsTable from "@/components/admin/payments/PendingPaymentsTable";
 import RecentActivityPanel from "@/components/admin/activity/RecentActivityPanel";
@@ -398,21 +397,6 @@ export default function AdminWorkspace({
       setIsLoadingAdminData(false);
     });
   }, [refreshAll]);
-
-  useEffect(() => {
-    const handleStorageChange = (event) => {
-      if (!event.key) return;
-      if (event.key.startsWith("payment:") || event.key.startsWith("users:")) {
-        setPaymentRequests(getPaymentRequests());
-      }
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("storage", handleStorageChange);
-      return () => window.removeEventListener("storage", handleStorageChange);
-    }
-    return undefined;
-  }, []);
 
   const handleAdminRealtimeUpdate = useCallback(() => {
     if (realtimeReloadTimerRef.current) {
