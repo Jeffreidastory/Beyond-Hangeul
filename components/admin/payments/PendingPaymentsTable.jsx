@@ -22,7 +22,6 @@ export default function PendingPaymentsTable({ pendingRows = [], onViewProof, on
             <tr>
               <th className="px-3 py-2 text-left">User Name</th>
               <th className="px-3 py-2 text-left">Module Name</th>
-              <th className="px-3 py-2 text-left">Reference</th>
               <th className="px-3 py-2 text-left">Date</th>
               <th className="px-3 py-2 text-left">Action</th>
             </tr>
@@ -39,7 +38,6 @@ export default function PendingPaymentsTable({ pendingRows = [], onViewProof, on
                 <tr key={row.id} className="border-t border-white/10 bg-[#0f1d32]">
                   <td className="px-3 py-3 text-slate-200">{row.userName}</td>
                   <td className="px-3 py-3 text-slate-200">{row.moduleName}</td>
-                  <td className="px-3 py-3 text-slate-200">{row.payment?.reference || "—"}</td>
                   <td className="px-3 py-3 text-slate-300">{row.dateLabel}</td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-2">
