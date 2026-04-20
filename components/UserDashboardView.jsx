@@ -521,6 +521,7 @@ export default function UserDashboardView({
       "learning_containers",
       "payment_records",
       "user_module_access",
+      "profiles",
       "worksheet_progress",
       "module_progress",
       "module_file_progress",
@@ -535,11 +536,30 @@ export default function UserDashboardView({
       realtimeReloadTimerRef.current = setTimeout(() => {
         realtimeReloadTimerRef.current = null;
         void loadDashboardData();
+        void loadRemotePaymentState();
         void loadModuleFileProgress();
         void loadNotifications(false);
       }, 120);
     },
   });
+
+  useEffect(() => {
+    const handleAppVisible = () => {
+      if (document.visibilityState === "visible") {
+        void loadDashboardData();
+        void loadRemotePaymentState();
+        void loadNotifications(false);
+      }
+    };
+
+    window.addEventListener("visibilitychange", handleAppVisible);
+    window.addEventListener("focus", handleAppVisible);
+
+    return () => {
+      window.removeEventListener("visibilitychange", handleAppVisible);
+      window.removeEventListener("focus", handleAppVisible);
+    };
+  }, [loadDashboardData, loadRemotePaymentState, loadNotifications]);
 
   const refreshResourcesData = () => {
     setResourcesData(getUserResourcesData(userId));
