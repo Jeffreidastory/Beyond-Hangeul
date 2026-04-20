@@ -2101,7 +2101,7 @@ export async function listPaymentsShared({ forceReload = false } = {}) {
     const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
       .from("payment_records")
-      .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
+      .select("*")
       .order("submitted_at", { ascending: false });
 
     if (error) {
@@ -2124,7 +2124,7 @@ export async function submitPaymentProofShared(payload) {
 
     const { data: approvedRows, error: approvedError } = await supabase
       .from("payment_records")
-      .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
+      .select("*")
       .eq("user_id", payload.userId)
       .eq("status", PAYMENT_STATUS.APPROVED)
       .order("submitted_at", { ascending: false })
@@ -2143,7 +2143,7 @@ export async function submitPaymentProofShared(payload) {
 
     const { data: pendingRows, error: pendingError } = await supabase
       .from("payment_records")
-      .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
+      .select("*")
       .eq("user_id", payload.userId)
       .eq("status", PAYMENT_STATUS.PENDING)
       .order("submitted_at", { ascending: false })
@@ -2161,20 +2161,25 @@ export async function submitPaymentProofShared(payload) {
       };
     }
 
+    const insertPayload = {
+      user_id: payload.userId,
+      user_email: payload.userEmail || "",
+      user_name: payload.userName || payload.userEmail?.split("@")[0] || "Learner",
+      module_id: paymentModuleId,
+      amount: Number(payload.amount || 150),
+      method: payload.method,
+      proof_image: incomingProof,
+      status: PAYMENT_STATUS.PENDING,
+    };
+
+    if (typeof payload.reference !== "undefined") {
+      insertPayload.reference = payload.reference || "";
+    }
+
     const { data: created, error: createError } = await supabase
       .from("payment_records")
-      .insert({
-        user_id: payload.userId,
-        user_email: payload.userEmail || "",
-        user_name: payload.userName || payload.userEmail?.split("@")[0] || "Learner",
-        module_id: paymentModuleId,
-        amount: Number(payload.amount || 150),
-        method: payload.method,
-        reference: payload.reference || "",
-        proof_image: incomingProof,
-        status: PAYMENT_STATUS.PENDING,
-      })
-      .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
+      .insert(insertPayload)
+      .select("*")
       .single();
 
     if (createError) throw createError;
@@ -2302,7 +2307,7 @@ export async function listUsersWithStatusShared(initialUsers = [], { forceReload
     const [paymentsResult, accessResult] = await Promise.all([
       supabase
         .from("payment_records")
-        .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
+        .select("*")
         .order("submitted_at", { ascending: false }),
       supabase
         .from("user_module_access")
@@ -2423,7 +2428,7 @@ export async function getUserLearningDataShared(userId) {
         .eq("user_id", userId),
       supabase
         .from("payment_records")
-        .select("id, user_id, user_email, user_name, module_id, amount, method, reference, proof_image, status, submitted_at, approved_at")
+        .select("*")
         .eq("user_id", userId)
         .order("submitted_at", { ascending: false }),
       listLearningPathsShared(),
