@@ -152,11 +152,6 @@ export default function AdminWorkspace({
   const canCreateModule = containers.length > 0;
   const [moduleSearch, setModuleSearch] = useState("");
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setPaymentRequests(getPaymentRequests());
-    }
-  }, []);
   const [moduleSort, setModuleSort] = useState("newest");
   const [modulePage, setModulePage] = useState(1);
   const MODULES_PER_PAGE = 20;
