@@ -28,7 +28,8 @@ export default function LandingNavbar() {
   const handleSignInClick = async (event) => {
     event.preventDefault();
     setIsSigningIn(true);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    window.dispatchEvent(new Event("landingOverlayShow"));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     const startAt = Date.now();
 
     try {

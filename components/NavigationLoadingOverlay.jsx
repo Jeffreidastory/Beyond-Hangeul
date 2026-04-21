@@ -8,12 +8,22 @@ export default function NavigationLoadingOverlay() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    const handleShow = () => {
+      setVisible(true);
+    };
+    window.addEventListener("landingOverlayShow", handleShow);
+    return () => {
+      window.removeEventListener("landingOverlayShow", handleShow);
+    };
+  }, []);
+
+  useEffect(() => {
     const flag = window.sessionStorage.getItem("landing-signin-loading");
     if (!flag) return;
 
     setVisible(true);
     window.sessionStorage.removeItem("landing-signin-loading");
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     if (!visible) return;
@@ -23,7 +33,7 @@ export default function NavigationLoadingOverlay() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [visible, pathname]);
+  }, [visible]);
 
   if (!visible) {
     return null;
