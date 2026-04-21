@@ -32,6 +32,7 @@ export default function LandingNavbar() {
     const startAt = Date.now();
 
     try {
+      window.sessionStorage.setItem("landing-signin-loading", "1");
       const supabase = getSupabaseBrowserClient();
       const {
         data: { session },
@@ -39,6 +40,9 @@ export default function LandingNavbar() {
 
       const destination = session?.user ? "/dashboard" : "/auth/login";
       await router.push(destination);
+    } catch (error) {
+      window.sessionStorage.removeItem("landing-signin-loading");
+      throw error;
     } finally {
       const elapsed = Date.now() - startAt;
       const remaining = MIN_SIGN_IN_LOADING_MS - elapsed;

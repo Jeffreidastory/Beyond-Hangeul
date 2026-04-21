@@ -1,6 +1,7 @@
 import { Inter, Montserrat, Poppins } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import NavigationLoadingOverlay from "@/components/NavigationLoadingOverlay";
 import PWARegister from "@/components/PWARegister";
 
 const inter = Inter({
@@ -47,6 +48,7 @@ export default function RootLayout({ children }) {
       </head>
       <body className="text-foreground [font-family:var(--font-body)]">
         <ThemeProvider>
+          <NavigationLoadingOverlay />
           <main className="mx-auto w-full max-w-7xl px-4 pb-14 pt-8 sm:px-6 lg:px-8">
             {children}
           </main>
