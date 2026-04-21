@@ -1,15 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 
 export default function AuthNavbar({ page = "login" }) {
   const router = useRouter();
-  const [isActionLoading, setIsActionLoading] = useState(false);
-  const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false);
-  const isMountedRef = useRef(true);
 
   const action =
     page === "register"
@@ -21,14 +18,7 @@ export default function AuthNavbar({ page = "login" }) {
   const handleActionClick = async (event) => {
     event.preventDefault();
     if (!action) return;
-    setIsActionLoading(true);
-    try {
-      await router.push(action.href);
-    } finally {
-      if (isMountedRef.current) {
-        setIsActionLoading(false);
-      }
-    }
+    await router.push(action.href);
   };
 
   useEffect(() => {
@@ -44,7 +34,6 @@ export default function AuthNavbar({ page = "login" }) {
 
       if (!mounted) return;
       if (session?.user) {
-        setIsAutoLoggingIn(true);
         await router.replace("/dashboard");
       }
     };
@@ -53,10 +42,9 @@ export default function AuthNavbar({ page = "login" }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!mounted) return;
       if (session?.user) {
-        setIsAutoLoggingIn(true);
         await router.replace("/dashboard");
       }
     });
@@ -86,22 +74,9 @@ export default function AuthNavbar({ page = "login" }) {
             <button
               type="button"
               onClick={handleActionClick}
-              disabled={isActionLoading || isAutoLoggingIn}
-              className="relative inline-flex overflow-hidden rounded-full bg-[#f6b21f] px-5 py-2.5 text-base font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-wait disabled:opacity-80"
+              className="rounded-full bg-[#f6b21f] px-5 py-2.5 text-base font-semibold text-[#07223a] transition hover:bg-[#ffc43d]"
             >
-              {(isActionLoading || isAutoLoggingIn) && (
-                <span className="pointer-events-none absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />
-              )}
-              <span className="relative z-10 inline-flex items-center gap-2">
-                {(isActionLoading || isAutoLoggingIn) ? (
-                  <>
-                    <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    Loading...
-                  </>
-                ) : (
-                  action.label
-                )}
-              </span>
+              {action.label}
             </button>
           ) : null}
         </div>

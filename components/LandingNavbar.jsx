@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 
 const SECTION_IDS = ["home", "about", "reviews", "contact"];
 
@@ -26,8 +27,15 @@ export default function LandingNavbar() {
   const handleSignInClick = async (event) => {
     event.preventDefault();
     setIsSigningIn(true);
+
     try {
-      await router.push("/auth/login");
+      const supabase = getSupabaseBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const destination = session?.user ? "/dashboard" : "/auth/login";
+      await router.push(destination);
     } finally {
       if (isMountedRef.current) {
         setIsSigningIn(false);
