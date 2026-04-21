@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const SECTION_IDS = ["home", "about", "reviews", "contact"];
@@ -9,6 +9,8 @@ const SECTION_IDS = ["home", "about", "reviews", "contact"];
 export default function LandingNavbar() {
   const [activeSection, setActiveSection] = useState("home");
   const [headerOffset, setHeaderOffset] = useState(82);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const isMountedRef = useRef(true);
 
   const sectionLinks = useMemo(
     () => [
@@ -21,9 +23,16 @@ export default function LandingNavbar() {
   );
   const router = useRouter();
 
-  const handleSignInClick = (event) => {
+  const handleSignInClick = async (event) => {
     event.preventDefault();
-    router.push("/auth/login");
+    setIsSigningIn(true);
+    try {
+      await router.push("/auth/login");
+    } finally {
+      if (isMountedRef.current) {
+        setIsSigningIn(false);
+      }
+    }
   };
 
   useEffect(() => {
@@ -66,6 +75,7 @@ export default function LandingNavbar() {
     window.addEventListener("scroll", updateActiveOnScroll, { passive: true });
 
     return () => {
+      isMountedRef.current = false;
       window.removeEventListener("resize", refreshOffset);
       window.removeEventListener("scroll", updateActiveOnScroll);
     };
@@ -120,9 +130,15 @@ export default function LandingNavbar() {
           <button
             type="button"
             onClick={handleSignInClick}
-            className="rounded-md bg-[#f6b21f] px-6 py-3 text-sm font-bold tracking-wide text-[#07223a] transition hover:bg-[#ffc43d]"
+            disabled={isSigningIn}
+            className="relative inline-flex overflow-hidden rounded-md bg-[#f6b21f] px-6 py-3 text-sm font-bold tracking-wide text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-wait disabled:opacity-80"
           >
-            SIGN IN
+            {isSigningIn && (
+              <span className="pointer-events-none absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />
+            )}
+            <span className="relative z-10">
+              {isSigningIn ? "Signing in..." : "SIGN IN"}
+            </span>
           </button>
           <Link
             href="/auth/register"

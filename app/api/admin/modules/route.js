@@ -62,6 +62,7 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "Module id is required." }, { status: 400 });
     }
 
+    const serverSupabase = await createServerClient();
     const { data: previousModule, error: previousError } = await serverSupabase
       .from("learning_modules")
       .select("module_name, resource_files")
@@ -86,7 +87,6 @@ export async function PATCH(request) {
     if (payload.containerTitle !== undefined) nextPatch.container_title = String(payload.containerTitle || "");
     if (payload.containerSubtitle !== undefined) nextPatch.container_subtitle = String(payload.containerSubtitle || "");
 
-    const serverSupabase = await createServerClient();
     let result = await serverSupabase.from("learning_modules").update(nextPatch).eq("id", moduleId);
 
     if (result.error && result.error.message?.includes("resource_files")) {

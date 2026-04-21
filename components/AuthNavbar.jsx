@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 
 export default function AuthNavbar({ page = "login" }) {
   const router = useRouter();
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false);
+  const isMountedRef = useRef(true);
 
   const action =
     page === "register"
@@ -13,12 +18,40 @@ export default function AuthNavbar({ page = "login" }) {
       ? { href: "/auth/register", label: "Sign up" }
       : null;
 
-  const handleActionClick = (event) => {
+  const handleActionClick = async (event) => {
     event.preventDefault();
-    if (action) {
-      router.push(action.href);
+    if (!action) return;
+    setIsActionLoading(true);
+    try {
+      await router.push(action.href);
+    } finally {
+      if (isMountedRef.current) {
+        setIsActionLoading(false);
+      }
     }
   };
+
+  useEffect(() => {
+    if (page !== "login") return;
+
+    const checkSession = async () => {
+      const supabase = getSupabaseBrowserClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!isMountedRef.current) return;
+      if (user) {
+        setIsAutoLoggingIn(true);
+        await router.replace("/dashboard");
+      }
+    };
+
+    void checkSession();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [page, router]);
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[#031425]/95 backdrop-blur">
@@ -39,9 +72,15 @@ export default function AuthNavbar({ page = "login" }) {
             <button
               type="button"
               onClick={handleActionClick}
-              className="rounded-full bg-[#f6b21f] px-5 py-2.5 text-base font-semibold text-[#07223a] transition hover:bg-[#ffc43d]"
+              disabled={isActionLoading || isAutoLoggingIn}
+              className="relative inline-flex overflow-hidden rounded-full bg-[#f6b21f] px-5 py-2.5 text-base font-semibold text-[#07223a] transition hover:bg-[#ffc43d] disabled:cursor-wait disabled:opacity-80"
             >
-              {action.label}
+              {(isActionLoading || isAutoLoggingIn) && (
+                <span className="pointer-events-none absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />
+              )}
+              <span className="relative z-10">
+                {isActionLoading ? "Loading..." : action.label}
+              </span>
             </button>
           ) : null}
         </div>
