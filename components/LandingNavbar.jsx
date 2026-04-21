@@ -12,6 +12,7 @@ export default function LandingNavbar() {
   const [headerOffset, setHeaderOffset] = useState(82);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const isMountedRef = useRef(true);
+  const MIN_SIGN_IN_LOADING_MS = 300;
 
   const sectionLinks = useMemo(
     () => [
@@ -27,6 +28,7 @@ export default function LandingNavbar() {
   const handleSignInClick = async (event) => {
     event.preventDefault();
     setIsSigningIn(true);
+    const startAt = Date.now();
 
     try {
       const supabase = getSupabaseBrowserClient();
@@ -37,6 +39,11 @@ export default function LandingNavbar() {
       const destination = session?.user ? "/dashboard" : "/auth/login";
       await router.push(destination);
     } finally {
+      const elapsed = Date.now() - startAt;
+      const remaining = MIN_SIGN_IN_LOADING_MS - elapsed;
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
       if (isMountedRef.current) {
         setIsSigningIn(false);
       }
