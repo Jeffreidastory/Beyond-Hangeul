@@ -102,7 +102,7 @@ export default function LandingNavbar() {
       data-landing-navbar="true"
       className="fixed inset-x-0 top-0 z-40 border-b border-white/20 bg-[#031425]/90 backdrop-blur"
     >
-      <nav className="mx-auto flex w-full items-center px-4 py-4 sm:px-6 lg:px-3 [font-family:var(--font-nav)]">
+      <nav className="mx-auto flex w-full items-center px-4 py-4 sm:px-6 lg:px-3 font-nav">
         <a href="#home" onClick={(e) => onSectionClick(e, "home")} className="text-2xl font-bold tracking-tight [font-family:var(--font-body)]">
           <span className="text-white">Beyond </span>
           <span className="text-amber-400">Hangeul</span>
@@ -136,8 +136,15 @@ export default function LandingNavbar() {
             {isSigningIn && (
               <span className="pointer-events-none absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />
             )}
-            <span className="relative z-10">
-              {isSigningIn ? "Signing in..." : "SIGN IN"}
+            <span className="relative z-10 inline-flex items-center gap-2">
+              {isSigningIn ? (
+                <>
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Signing in...
+                </>
+              ) : (
+                "SIGN IN"
+              )}
             </span>
           </button>
           <Link

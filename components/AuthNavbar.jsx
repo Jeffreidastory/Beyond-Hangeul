@@ -34,22 +34,36 @@ export default function AuthNavbar({ page = "login" }) {
   useEffect(() => {
     if (page !== "login") return;
 
-    const checkSession = async () => {
-      const supabase = getSupabaseBrowserClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const supabase = getSupabaseBrowserClient();
+    let mounted = true;
 
-      if (!isMountedRef.current) return;
-      if (user) {
+    const tryRedirect = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+      if (session?.user) {
         setIsAutoLoggingIn(true);
         await router.replace("/dashboard");
       }
     };
 
-    void checkSession();
+    void tryRedirect();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        setIsAutoLoggingIn(true);
+        await router.replace("/dashboard");
+      }
+    });
+
     return () => {
-      isMountedRef.current = false;
+      mounted = false;
+      subscription?.unsubscribe?.();
     };
   }, [page, router]);
 
@@ -78,8 +92,15 @@ export default function AuthNavbar({ page = "login" }) {
               {(isActionLoading || isAutoLoggingIn) && (
                 <span className="pointer-events-none absolute inset-0 bg-[#ffed99]/70 origin-left animate-progress" />
               )}
-              <span className="relative z-10">
-                {isActionLoading ? "Loading..." : action.label}
+              <span className="relative z-10 inline-flex items-center gap-2">
+                {(isActionLoading || isAutoLoggingIn) ? (
+                  <>
+                    <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Loading...
+                  </>
+                ) : (
+                  action.label
+                )}
               </span>
             </button>
           ) : null}
