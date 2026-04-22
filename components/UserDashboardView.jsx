@@ -81,7 +81,7 @@ const menuItems = [
   {
     key: "worksheets",
     label: "Worksheets",
-    href: "/dashboard?tab=worksheets",
+    href: "/worksheets/online",
     icon: CheckSquare,
   },
   { key: "path", label: "Path", href: "/dashboard?tab=path", icon: Compass },
@@ -99,6 +99,28 @@ const menuItems = [
     icon: Library,
   },
 ];
+
+const WORKSHEETS_VIEW_ONLINE = "online";
+const WORKSHEETS_VIEW_PRINTABLE = "printable";
+
+const worksheetsSubmenuItems = [
+  {
+    key: WORKSHEETS_VIEW_ONLINE,
+    label: "Online Worksheets",
+    description: "Practice writing and quiz mode worksheets online.",
+  },
+  {
+    key: WORKSHEETS_VIEW_PRINTABLE,
+    label: "Printable Worksheets",
+    description: "Open and download worksheet files from admin uploads.",
+  },
+];
+
+function normalizeWorksheetsView(value) {
+  return value === WORKSHEETS_VIEW_PRINTABLE
+    ? WORKSHEETS_VIEW_PRINTABLE
+    : WORKSHEETS_VIEW_ONLINE;
+}
 
 function getMonthMatrix() {
   const now = new Date();
@@ -139,6 +161,11 @@ export default function UserDashboardView({
   const [activeTab, setActiveTab] = useState(
     () => searchParams.get("tab") || "home",
   );
+  const [worksheetsView, setWorksheetsView] = useState(() =>
+    normalizeWorksheetsView(searchParams.get("view")),
+  );
+  const [worksheetsMenuOpen, setWorksheetsMenuOpen] = useState(false);
+  const [mobileWorksheetsMenuOpen, setMobileWorksheetsMenuOpen] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -146,17 +173,45 @@ export default function UserDashboardView({
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [moduleFileProgress, setModuleFileProgress] = useState({});
+  const worksheetsMenuRef = useRef(null);
+  const mobileWorksheetsMenuRef = useRef(null);
 
   const setTab = useCallback((tabKey) => {
     setActiveTab(tabKey);
+    setWorksheetsMenuOpen(false);
+    setMobileWorksheetsMenuOpen(false);
+
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("tab", tabKey);
+      if (tabKey !== "worksheets") {
+        url.searchParams.delete("view");
+        url.searchParams.delete("worksheet");
+      } else if (!url.searchParams.get("view")) {
+        url.searchParams.set("view", WORKSHEETS_VIEW_ONLINE);
+      }
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, []);
+
+  const openWorksheetsView = useCallback((nextView) => {
+    const resolvedView = normalizeWorksheetsView(nextView);
+    setActiveTab("worksheets");
+    setWorksheetsView(resolvedView);
+    setSelectedWorksheetId("");
+    setWorksheetNotice("");
+    setWorksheetsMenuOpen(false);
+    setMobileWorksheetsMenuOpen(false);
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "worksheets");
+      url.searchParams.set("view", resolvedView);
+      url.searchParams.delete("worksheet");
       window.history.replaceState(null, "", url.toString());
     }
   }, []);
   const { isLight, toggleTheme } = useTheme();
-  const isWorksheetsTab = activeTab === "worksheets";
   const isSidebarCollapsed = !isSidebarHovered;
   const [learningData, setLearningData] = useState(
     initialLearningData || {
@@ -190,6 +245,7 @@ export default function UserDashboardView({
   const [paymentNotice, setPaymentNotice] = useState("");
   const [isSubmittingPaymentProof, setIsSubmittingPaymentProof] = useState(false);
   const [worksheetNotice, setWorksheetNotice] = useState("");
+  const [isWorksheetsLoading, setIsWorksheetsLoading] = useState(true);
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedWorksheetId, setSelectedWorksheetId] = useState("");
   const [worksheetMode, setWorksheetMode] = useState("writing");
@@ -295,8 +351,8 @@ export default function UserDashboardView({
           setTab("modules");
           break;
         case "Worksheet":
+          openWorksheetsView(WORKSHEETS_VIEW_ONLINE);
           setSelectedWorksheetId(result.data.id);
-          setTab("worksheets");
           break;
         case "Resource":
           if (result.data.fileUrl) {
@@ -318,7 +374,7 @@ export default function UserDashboardView({
           break;
       }
     },
-    [setTab, setIsSearchOpen, setQuery],
+    [openWorksheetsView, setTab, setIsSearchOpen, setQuery],
   );
 
   useEffect(() => {
@@ -448,6 +504,27 @@ export default function UserDashboardView({
     return () => window.removeEventListener("resize", positionNotificationPanel);
   }, [notificationsOpen, positionNotificationPanel]);
 
+  useEffect(() => {
+    if (!worksheetsMenuOpen && !mobileWorksheetsMenuOpen) {
+      return undefined;
+    }
+
+    const handleOutsideMenuClick = (event) => {
+      const target = event.target;
+      if (worksheetsMenuRef.current?.contains(target)) return;
+      if (mobileWorksheetsMenuRef.current?.contains(target)) return;
+      setWorksheetsMenuOpen(false);
+      setMobileWorksheetsMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleOutsideMenuClick);
+    document.addEventListener("touchstart", handleOutsideMenuClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideMenuClick);
+      document.removeEventListener("touchstart", handleOutsideMenuClick);
+    };
+  }, [mobileWorksheetsMenuOpen, worksheetsMenuOpen]);
+
   const refreshLearningData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
 
@@ -555,8 +632,16 @@ export default function UserDashboardView({
     }
   }, [initialLearningData?.payments]);
 
-  const loadDashboardData = useCallback(async () => {
-    await refreshLearningData();
+  const loadDashboardData = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setIsWorksheetsLoading(true);
+    }
+
+    try {
+      await refreshLearningData();
+    } finally {
+      setIsWorksheetsLoading(false);
+    }
   }, [refreshLearningData]);
 
   const loadRemotePaymentState = useCallback(async () => {
@@ -603,7 +688,7 @@ export default function UserDashboardView({
 
       await loadPaymentStoreState();
       void loadRemotePaymentState();
-      void loadDashboardData();
+      void loadDashboardData({ showLoading: true });
       void loadNotifications();
       void loadModuleFileProgress();
     };
@@ -866,8 +951,8 @@ export default function UserDashboardView({
       return;
     }
 
+    openWorksheetsView(WORKSHEETS_VIEW_ONLINE);
     setSelectedWorksheetId(bookmark.itemId);
-    setTab("worksheets");
   };
 
   const removeUserBookmark = (bookmark) => {
@@ -890,12 +975,25 @@ export default function UserDashboardView({
     [allModules, selectedModuleId],
   );
   const selectedWorksheet = useMemo(
-    () =>
-      learningData.worksheets.find(
-        (worksheet) => worksheet.id === selectedWorksheetId,
-      ) || null,
-    [learningData.worksheets, selectedWorksheetId],
+    () => {
+      if (worksheetsView !== WORKSHEETS_VIEW_ONLINE) {
+        return null;
+      }
+      return (
+        learningData.worksheets.find(
+          (worksheet) => worksheet.id === selectedWorksheetId,
+        ) || null
+      );
+    },
+    [learningData.worksheets, selectedWorksheetId, worksheetsView],
   );
+
+  useEffect(() => {
+    const requestedView = normalizeWorksheetsView(searchParams.get("view"));
+    if (requestedView !== worksheetsView) {
+      setWorksheetsView(requestedView);
+    }
+  }, [searchParams, worksheetsView]);
 
   useEffect(() => {
     const requestedModuleId = searchParams.get("module") || "";
@@ -905,14 +1003,26 @@ export default function UserDashboardView({
 
   useEffect(() => {
     const requestedWorksheetId = searchParams.get("worksheet") || "";
-    if (activeTab !== "worksheets" || !requestedWorksheetId) return;
+    if (
+      activeTab !== "worksheets" ||
+      worksheetsView !== WORKSHEETS_VIEW_ONLINE ||
+      !requestedWorksheetId
+    ) {
+      return;
+    }
     setSelectedWorksheetId(requestedWorksheetId);
-  }, [activeTab, searchParams]);
+  }, [activeTab, searchParams, worksheetsView]);
 
   useEffect(() => {
     if (activeTab === "worksheets") return;
     setSelectedWorksheetId("");
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "worksheets") return;
+    if (worksheetsView === WORKSHEETS_VIEW_ONLINE) return;
+    setSelectedWorksheetId("");
+  }, [activeTab, worksheetsView]);
 
   useEffect(() => {
     if (!selectedWorksheetId) return;
@@ -933,7 +1043,7 @@ export default function UserDashboardView({
       (module) => module.type === "paid" && !module.isLocked,
     );
     return hasActiveSubscription || hasUnlockedPremiumModule;
-  }, [learningData.modules, subscription]);
+  }, [isActiveSubscription, learningData.modules, subscription]);
 
   const isWorksheetLocked = useCallback(
     (worksheet) =>
@@ -970,6 +1080,16 @@ export default function UserDashboardView({
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       ),
     [learningData.worksheets],
+  );
+
+  const printableWorksheets = useMemo(
+    () =>
+      sortedWorksheets.filter(
+        (worksheet) =>
+          Boolean(worksheet.resourceFileData) ||
+          Boolean(worksheet.resourceFileName),
+      ),
+    [sortedWorksheets],
   );
 
   const moduleGroups = useMemo(() => {
@@ -1102,10 +1222,11 @@ export default function UserDashboardView({
           `/api/module-file-url?path=${encodeURIComponent(storagePath)}`,
         );
         const data = await response.json();
-        if (!response.ok || !data?.url) {
+        const signedUrl = data?.signedUrl || data?.url || "";
+        if (!response.ok || !signedUrl) {
           return resourceFileData;
         }
-        return data.url;
+        return signedUrl;
       } catch (error) {
         console.warn("Unable to get accessible module file URL:", error);
         return resourceFileData;
@@ -1192,6 +1313,33 @@ export default function UserDashboardView({
       });
     },
     [getAccessibleModuleFileUrl, userId],
+  );
+
+  const handleOpenWorksheetFile = useCallback(
+    async (worksheet, { download = false } = {}) => {
+      if (!worksheet?.resourceFileData) return;
+
+      const accessibleUrl = await getAccessibleModuleFileUrl(
+        worksheet.resourceFileData,
+      );
+      if (!accessibleUrl) {
+        setWorksheetNotice("Unable to open this worksheet file right now.");
+        return;
+      }
+
+      const link = document.createElement("a");
+      link.href = accessibleUrl;
+      if (download) {
+        link.download = worksheet.resourceFileName || `${worksheet.title}.pdf`;
+      } else {
+        link.target = "_blank";
+        link.rel = "noopener,noreferrer";
+      }
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    },
+    [getAccessibleModuleFileUrl],
   );
 
   const summaryItems = useMemo(
@@ -1646,6 +1794,76 @@ export default function UserDashboardView({
     return null;
   };
 
+  const renderWorksheetLoadingSkeleton = () => (
+    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <article
+          key={`worksheet-skeleton-${index}`}
+          className={`relative rounded-xl border p-4 ${
+            isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"
+          }`}
+        >
+          <div className={`h-5 w-4/5 rounded-md ${isLight ? "bg-slate-200" : "bg-white/10"}`} />
+          <div className={`mt-2 h-3 w-2/3 rounded-md ${isLight ? "bg-slate-200" : "bg-white/10"}`} />
+          <div className={`mt-4 h-2 w-full overflow-hidden rounded-full ${isLight ? "bg-slate-200" : "bg-white/10"}`}>
+            <div
+              className={`animate-progress h-full w-2/3 rounded-full ${
+                isLight
+                  ? "bg-gradient-to-r from-transparent via-slate-300 to-transparent"
+                  : "bg-gradient-to-r from-transparent via-slate-300/40 to-transparent"
+              }`}
+            />
+          </div>
+          <div className={`mt-4 h-8 w-1/2 rounded-lg ${isLight ? "bg-slate-200" : "bg-white/10"}`} />
+        </article>
+      ))}
+    </div>
+  );
+
+  const renderPrintableLoadingSkeleton = () => (
+    <div className="mt-4 grid gap-3 md:grid-cols-2">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <article
+          key={`printable-skeleton-${index}`}
+          className={`rounded-xl border p-4 ${
+            isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1d32]"
+          }`}
+        >
+          <div className={`h-5 w-3/5 rounded-md ${isLight ? "bg-slate-200" : "bg-white/10"}`} />
+          <div className={`mt-2 h-3 w-2/5 rounded-md ${isLight ? "bg-slate-200" : "bg-white/10"}`} />
+          <div className={`mt-4 h-9 w-full rounded-xl ${isLight ? "bg-slate-200" : "bg-white/10"}`} />
+        </article>
+      ))}
+    </div>
+  );
+
+  const renderWorksheetsSubmenuContent = ({ mobile = false } = {}) => (
+    <div className={`${mobile ? "space-y-2" : "space-y-1.5"}`}>
+      {worksheetsSubmenuItems.map((entry) => {
+        const isActive = activeTab === "worksheets" && worksheetsView === entry.key;
+        return (
+          <button
+            key={entry.key}
+            type="button"
+            onClick={() => openWorksheetsView(entry.key)}
+            className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+              isActive
+                ? "border-amber-400/60 bg-amber-400/15 text-amber-200"
+                : isLight
+                  ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                  : "border-white/10 bg-[#0f1d32] text-slate-200 hover:bg-white/10"
+            }`}
+          >
+            <p className="text-sm font-semibold">{entry.label}</p>
+            <p className={`mt-1 text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+              {entry.description}
+            </p>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   const renderMainSection = () => {
     if (activeTab === "modules") {
       return (
@@ -1709,6 +1927,8 @@ export default function UserDashboardView({
     }
 
     if (activeTab === "worksheets") {
+      const isPrintableView = worksheetsView === WORKSHEETS_VIEW_PRINTABLE;
+
       return (
         <main
           className={`space-y-5 rounded-2xl p-5 lg:p-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}
@@ -1724,7 +1944,7 @@ export default function UserDashboardView({
                       type="button"
                       onClick={() => {
                         setSelectedWorksheetId("");
-                        setTab("worksheets");
+                        openWorksheetsView(WORKSHEETS_VIEW_ONLINE);
                       }}
                       aria-label="Back to worksheets"
                       className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl border text-lg transition ${isLight ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-100" : "border-white/15 bg-[#0f1d32] hover:bg-white/10 text-slate-200"}`}
@@ -1741,14 +1961,30 @@ export default function UserDashboardView({
                     </div>
                   </>
                 ) : (
-                  <>
-                    <h2 className="text-xl font-bold">Worksheets</h2>
-                    <p
-                      className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-slate-300"}`}
-                    >
-                      Select a worksheet card to start Writing and Quiz mode.
-                    </p>
-                  </>
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      {isPrintableView ? "Printable Worksheets" : "Online Worksheets"}
+                    </h2>
+                    {isWorksheetsLoading ? (
+                      <div className={`mt-2 h-4 w-72 max-w-full overflow-hidden rounded-full ${isLight ? "bg-slate-200" : "bg-white/10"}`}>
+                        <div
+                          className={`animate-progress h-full w-2/3 rounded-full ${
+                            isLight
+                              ? "bg-gradient-to-r from-transparent via-slate-300 to-transparent"
+                              : "bg-gradient-to-r from-transparent via-slate-300/40 to-transparent"
+                          }`}
+                        />
+                      </div>
+                    ) : (
+                      <p
+                        className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-slate-300"}`}
+                      >
+                        {isPrintableView
+                          ? "Open or download worksheet files uploaded by the admin."
+                          : "Select a worksheet card to start Writing and Quiz mode."}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -1770,10 +2006,13 @@ export default function UserDashboardView({
                       Quiz
                     </button>
                     {selectedWorksheet.resourceFileData ? (
-                      <a
-                        href={selectedWorksheet.resourceFileData}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleOpenWorksheetFile(selectedWorksheet, {
+                            download: true,
+                          })
+                        }
                         title="Download Worksheet"
                         className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${isLight ? "border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200" : "border-white/10 bg-[#0f1d32] text-slate-200 hover:bg-white/5"}`}
                       >
@@ -1791,7 +2030,7 @@ export default function UserDashboardView({
                           <polyline points="7 10 12 15 17 10" />
                           <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
-                      </a>
+                      </button>
                     ) : null}
                   </div>
                 </div>
@@ -1816,6 +2055,99 @@ export default function UserDashboardView({
                   />
                 )}
               </div>
+            ) : isPrintableView ? (
+              <>
+                {isWorksheetsLoading ? (
+                  renderPrintableLoadingSkeleton()
+                ) : printableWorksheets.length > 0 ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {printableWorksheets.map((sheet) => {
+                      const sheetLocked = isWorksheetLocked(sheet);
+                      const fileName = sheet.resourceFileName || `${sheet.title}.pdf`;
+                      const fileSource = sheet.resourceFileData || "";
+
+                      return (
+                        <article
+                          key={sheet.id}
+                          className={`rounded-xl border p-4 ${
+                            isLight
+                              ? "border-slate-200 bg-white"
+                              : "border-white/10 bg-[#0f1d32]"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h3 className="truncate font-semibold">{sheet.title}</h3>
+                              <p className={`mt-1 truncate text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                                {fileName}
+                              </p>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                sheet.accessType === "paid"
+                                  ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                                  : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                              }`}
+                            >
+                              {sheet.accessType === "paid" ? "Premium" : "Free"}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {sheetLocked ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setWorksheetNotice(
+                                    "This worksheet is Premium. Unlock premium access first.",
+                                  );
+                                  setPaymentNotice("");
+                                  setProofImage("");
+                                  setTab("payment");
+                                }}
+                                className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-[#0b1728] hover:bg-amber-300"
+                              >
+                                Unlock Premium
+                              </button>
+                            ) : fileSource ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void handleOpenWorksheetFile(sheet)
+                                  }
+                                  className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${isLight ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-100" : "border-white/15 bg-[#13243d] text-slate-200 hover:bg-white/10"}`}
+                                >
+                                  Open File
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void handleOpenWorksheetFile(sheet, {
+                                      download: true,
+                                    })
+                                  }
+                                  className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-[#0b1728] hover:bg-amber-300"
+                                >
+                                  Download
+                                </button>
+                              </>
+                            ) : (
+                              <p className={`text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                                File is not available yet.
+                              </p>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className={`mt-4 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>
+                    No printable worksheets available yet.
+                  </p>
+                )}
+              </>
             ) : (
               <>
                 {worksheetNotice ? (
@@ -1824,129 +2156,133 @@ export default function UserDashboardView({
                   </p>
                 ) : null}
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {sortedWorksheets.map((sheet) => {
-                    const sheetScore = worksheetScores[sheet.id] || null;
-                    const sheetLocked = isWorksheetLocked(sheet);
-                    const progressPercent = sheetScore
-                      ? Math.round(
-                          (Number(sheetScore.quizPercent || 0) +
-                            Number(sheetScore.writingPercent || 0)) /
-                            2,
-                        )
-                      : 0;
-                    const hasStarted =
-                      !!sheetScore &&
-                      (Boolean(sheetScore.quizComplete) || progressPercent > 0);
-                    const isWorksheetPerfect =
-                      !!sheetScore &&
-                      Number(sheetScore.quizPercent || 0) === 100 &&
-                      Number(sheetScore.writingPercent || 0) === 100 &&
-                      Boolean(sheetScore.quizComplete);
+                {isWorksheetsLoading ? (
+                  renderWorksheetLoadingSkeleton()
+                ) : (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {sortedWorksheets.map((sheet) => {
+                      const sheetScore = worksheetScores[sheet.id] || null;
+                      const sheetLocked = isWorksheetLocked(sheet);
+                      const progressPercent = sheetScore
+                        ? Math.round(
+                            (Number(sheetScore.quizPercent || 0) +
+                              Number(sheetScore.writingPercent || 0)) /
+                              2,
+                          )
+                        : 0;
+                      const hasStarted =
+                        !!sheetScore &&
+                        (Boolean(sheetScore.quizComplete) || progressPercent > 0);
+                      const isWorksheetPerfect =
+                        !!sheetScore &&
+                        Number(sheetScore.quizPercent || 0) === 100 &&
+                        Number(sheetScore.writingPercent || 0) === 100 &&
+                        Boolean(sheetScore.quizComplete);
 
-                    return (
-                      <article
-                        key={sheet.id}
-                        className={`relative rounded-xl border p-4 ${
-                          isLight
-                            ? "border-slate-200 bg-white"
-                            : "border-white/10 bg-[#0f1d32]"
-                        }`}
-                      >
-                        <span
-                          className={`absolute right-3 top-3 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                            sheet.accessType === "paid"
-                              ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
-                              : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                      return (
+                        <article
+                          key={sheet.id}
+                          className={`relative rounded-xl border p-4 ${
+                            isLight
+                              ? "border-slate-200 bg-white"
+                              : "border-white/10 bg-[#0f1d32]"
                           }`}
                         >
-                          {sheet.accessType === "paid" ? "Premium" : "Free"}
-                        </span>
-
-                        <h3 className="font-semibold">{sheet.title}</h3>
-                        <p
-                          className={`mt-1 text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}
-                        >
-                          {sheet.entries?.length || 0} rows • Writing + Quiz
-                        </p>
-                        <p
-                          className={`mt-1 text-[11px] font-semibold ${sheetLocked ? "text-amber-300" : isLight ? "text-emerald-700" : "text-emerald-300"}`}
-                        >
-                          {sheet.accessType === "paid"
-                            ? "Premium Worksheet"
-                            : "Free Worksheet"}
-                        </p>
-
-                        <div className="mt-3">
-                          <div className="mb-1 flex items-center justify-between text-xs">
-                            <span
-                              className={
-                                isLight ? "text-slate-600" : "text-slate-300"
-                              }
-                            >
-                              Progress
-                            </span>
-                            <span className="font-semibold">
-                              {progressPercent}%
-                            </span>
-                          </div>
-                          <div
-                            className={`h-2 w-full overflow-hidden rounded-full ${isLight ? "bg-slate-200" : "bg-white/10"}`}
+                          <span
+                            className={`absolute right-3 top-3 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                              sheet.accessType === "paid"
+                                ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                                : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                            }`}
                           >
-                            <div
-                              className="h-full rounded-full bg-emerald-400 transition-all"
-                              style={{
-                                width: `${Math.max(0, Math.min(100, progressPercent))}%`,
-                              }}
-                            />
-                          </div>
+                            {sheet.accessType === "paid" ? "Premium" : "Free"}
+                          </span>
+
+                          <h3 className="font-semibold">{sheet.title}</h3>
                           <p
-                            className={`mt-1 text-[11px] ${isLight ? "text-slate-500" : "text-slate-400"}`}
+                            className={`mt-1 text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}
                           >
-                            {hasStarted
-                              ? "Saved from your worksheet practice"
-                              : "No worksheet progress yet"}
+                            {sheet.entries?.length || 0} rows - Writing + Quiz
                           </p>
-                        </div>
-
-                        {isWorksheetPerfect ? (
-                          <div
-                            className={`mt-3 inline-flex items-center rounded-full px-3 py-2 text-xs font-semibold ${isLight ? "bg-emerald-100 text-emerald-800" : "bg-emerald-500/10 text-emerald-200"}`}
+                          <p
+                            className={`mt-1 text-[11px] font-semibold ${sheetLocked ? "text-amber-300" : isLight ? "text-emerald-700" : "text-emerald-300"}`}
                           >
-                            Completed
+                            {sheet.accessType === "paid"
+                              ? "Premium Worksheet"
+                              : "Free Worksheet"}
+                          </p>
+
+                          <div className="mt-3">
+                            <div className="mb-1 flex items-center justify-between text-xs">
+                              <span
+                                className={
+                                  isLight ? "text-slate-600" : "text-slate-300"
+                                }
+                              >
+                                Progress
+                              </span>
+                              <span className="font-semibold">
+                                {progressPercent}%
+                              </span>
+                            </div>
+                            <div
+                              className={`h-2 w-full overflow-hidden rounded-full ${isLight ? "bg-slate-200" : "bg-white/10"}`}
+                            >
+                              <div
+                                className="h-full rounded-full bg-emerald-400 transition-all"
+                                style={{
+                                  width: `${Math.max(0, Math.min(100, progressPercent))}%`,
+                                }}
+                              />
+                            </div>
+                            <p
+                              className={`mt-1 text-[11px] ${isLight ? "text-slate-500" : "text-slate-400"}`}
+                            >
+                              {hasStarted
+                                ? "Saved from your worksheet practice"
+                                : "No worksheet progress yet"}
+                            </p>
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (sheetLocked) {
-                                setWorksheetNotice(
-                                  "This worksheet is Premium. Unlock premium access first.",
-                                );
-                                setPaymentNotice("");
-                                setProofImage("");
-                                setTab("payment");
-                                return;
-                              }
-                              setWorksheetNotice("");
-                              setSelectedWorksheetId(sheet.id);
-                            }}
-                            className="mt-3 rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-[#0b1728] hover:bg-amber-300"
-                          >
-                            {sheetLocked
-                              ? "Unlock Premium"
-                              : hasStarted
-                                ? "Continue"
-                                : "Open Worksheet"}
-                          </button>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
 
-                {learningData.worksheets.length === 0 ? (
-                  <p className="mt-4 text-sm text-slate-400">
+                          {isWorksheetPerfect ? (
+                            <div
+                              className={`mt-3 inline-flex items-center rounded-full px-3 py-2 text-xs font-semibold ${isLight ? "bg-emerald-100 text-emerald-800" : "bg-emerald-500/10 text-emerald-200"}`}
+                            >
+                              Completed
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (sheetLocked) {
+                                  setWorksheetNotice(
+                                    "This worksheet is Premium. Unlock premium access first.",
+                                  );
+                                  setPaymentNotice("");
+                                  setProofImage("");
+                                  setTab("payment");
+                                  return;
+                                }
+                                setWorksheetNotice("");
+                                setSelectedWorksheetId(sheet.id);
+                              }}
+                              className="mt-3 rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-[#0b1728] hover:bg-amber-300"
+                            >
+                              {sheetLocked
+                                ? "Unlock Premium"
+                                : hasStarted
+                                  ? "Continue"
+                                  : "Open Worksheet"}
+                            </button>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!isWorksheetsLoading && learningData.worksheets.length === 0 ? (
+                  <p className={`mt-4 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>
                     No worksheets available yet.
                   </p>
                 ) : null}
@@ -1956,7 +2292,6 @@ export default function UserDashboardView({
         </main>
       );
     }
-
     if (activeTab === "goal") {
       return (
         <main
@@ -2481,7 +2816,10 @@ export default function UserDashboardView({
           <nav className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeTab === item.key;
+              const isWorksheetsItem = item.key === "worksheets";
+              const isActive = isWorksheetsItem
+                ? activeTab === "worksheets"
+                : activeTab === item.key;
               const navItemClass = `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                 isSidebarCollapsed ? "justify-center" : "justify-start"
               } ${
@@ -2495,10 +2833,32 @@ export default function UserDashboardView({
               }`;
 
               return (
-                <div key={item.key} className="relative">
+                <div
+                  key={item.key}
+                  className="relative"
+                  ref={isWorksheetsItem ? worksheetsMenuRef : undefined}
+                  onMouseEnter={
+                    isWorksheetsItem
+                      ? () => setWorksheetsMenuOpen(true)
+                      : undefined
+                  }
+                  onMouseLeave={
+                    isWorksheetsItem
+                      ? () => setWorksheetsMenuOpen(false)
+                      : undefined
+                  }
+                >
                   <button
                     type="button"
-                    onClick={() => setTab(item.key)}
+                    onClick={() => {
+                      if (isWorksheetsItem) {
+                        setWorksheetsMenuOpen((open) => !open);
+                        return;
+                      }
+                      setTab(item.key);
+                    }}
+                    aria-haspopup={isWorksheetsItem ? "menu" : undefined}
+                    aria-expanded={isWorksheetsItem ? worksheetsMenuOpen : undefined}
                     className={navItemClass}
                   >
                     <span className="inline-flex items-center justify-center rounded-full bg-transparent p-1">
@@ -2513,7 +2873,34 @@ export default function UserDashboardView({
                     >
                       {item.label}
                     </span>
+                    {isWorksheetsItem ? (
+                      <ChevronRight
+                        size={16}
+                        className={`ml-auto transition-transform ${
+                          worksheetsMenuOpen ? "rotate-90" : ""
+                        }`}
+                      />
+                    ) : null}
                   </button>
+
+                  {isWorksheetsItem && worksheetsMenuOpen ? (
+                    <div
+                      className={`absolute left-full top-0 z-50 ml-2 w-72 rounded-2xl border p-3 shadow-2xl ${
+                        isLight
+                          ? "border-slate-200 bg-white"
+                          : "border-white/10 bg-[#0f1d32]"
+                      }`}
+                    >
+                      <p
+                        className={`mb-2 text-xs font-semibold uppercase tracking-wide ${
+                          isLight ? "text-slate-500" : "text-slate-400"
+                        }`}
+                      >
+                        Worksheets
+                      </p>
+                      {renderWorksheetsSubmenuContent()}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -2577,12 +2964,22 @@ export default function UserDashboardView({
           <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-1 pb-1">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeTab === item.key;
+              const isWorksheetsItem = item.key === "worksheets";
+              const isActive = isWorksheetsItem
+                ? activeTab === "worksheets"
+                : activeTab === item.key;
               return (
                 <button
                   key={item.key}
                   type="button"
-                  onClick={() => setTab(item.key)}
+                  onClick={() => {
+                    if (isWorksheetsItem) {
+                      setMobileWorksheetsMenuOpen((open) => !open);
+                      return;
+                    }
+                    setMobileWorksheetsMenuOpen(false);
+                    setTab(item.key);
+                  }}
                   className={`shrink-0 min-w-18 rounded-3xl px-3 py-2 text-[11px] font-semibold transition ${isActive ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-100" : "text-slate-200 hover:bg-white/10"}`}
                 >
                   <div className="flex flex-col items-center justify-center gap-1">
@@ -2594,6 +2991,25 @@ export default function UserDashboardView({
             })}
           </div>
         </nav>
+        {mobileWorksheetsMenuOpen ? (
+          <div
+            ref={mobileWorksheetsMenuRef}
+            className={`fixed bottom-20 left-4 right-4 z-50 rounded-2xl border p-3 shadow-2xl ${
+              isLight
+                ? "border-slate-200 bg-white"
+                : "border-white/10 bg-[#0f1d32]"
+            }`}
+          >
+            <p
+              className={`mb-2 text-xs font-semibold uppercase tracking-wide ${
+                isLight ? "text-slate-500" : "text-slate-400"
+              }`}
+            >
+              Worksheets
+            </p>
+            {renderWorksheetsSubmenuContent({ mobile: true })}
+          </div>
+        ) : null}
       </div>
 
       {activeTab === "modules" ? (

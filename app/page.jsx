@@ -12,12 +12,37 @@ export default function LandingPage() {
           display: none;
         }
 
+        body {
+          margin: 0;
+          min-height: 100vh;
+          background: #05111f;
+          color: #ffffff;
+          font-family: var(--font-body, ui-sans-serif, system-ui, sans-serif);
+        }
+
         body > main {
           padding-top: 0 !important;
           padding-bottom: 0 !important;
           max-width: 100% !important;
           padding-left: 0 !important;
           padding-right: 0 !important;
+        }
+
+        a {
+          color: inherit;
+          text-decoration: none;
+        }
+
+        button, input, textarea, select {
+          font: inherit;
+        }
+
+        .text-white {
+          color: #ffffff !important;
+        }
+
+        .bg-[#05111f] {
+          background-color: #05111f !important;
         }
       `}</style>
 

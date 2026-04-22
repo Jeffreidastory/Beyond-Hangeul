@@ -8,6 +8,27 @@ export default function PWARegister() {
       return;
     }
 
+    if (process.env.NODE_ENV !== "production") {
+      // Avoid stale service worker caches breaking local dev chunk loading.
+      void navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => {
+          void registration.unregister();
+        });
+      });
+
+      if ("caches" in window) {
+        void caches.keys().then((keys) => {
+          keys
+            .filter((key) => key.startsWith("beyond-hangeul-"))
+            .forEach((key) => {
+              void caches.delete(key);
+            });
+        });
+      }
+
+      return;
+    }
+
     const handleRegister = async () => {
       try {
         await navigator.serviceWorker.register("/sw.js");

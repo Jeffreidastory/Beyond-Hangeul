@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const SHELL_CACHE = `beyond-hangeul-shell-${CACHE_VERSION}`;
 const PDF_CACHE = `beyond-hangeul-pdf-${CACHE_VERSION}`;
 const OFFLINE_PAGE = "/offline.html";
@@ -53,13 +53,22 @@ async function cacheFirst(request) {
   }
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, { fallbackToOfflinePage = false } = {}) {
   try {
     const response = await fetch(request);
     return response;
   } catch (error) {
     const cachedResponse = await caches.match(request);
-    return cachedResponse || (await caches.match(OFFLINE_PAGE));
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    if (fallbackToOfflinePage && isNavigationRequest(request)) {
+      const offlinePage = await caches.match(OFFLINE_PAGE);
+      if (offlinePage) {
+        return offlinePage;
+      }
+    }
+    return Response.error();
   }
 }
 
@@ -94,7 +103,7 @@ self.addEventListener("fetch", (event) => {
   const origin = self.location.origin;
 
   if (request.destination === "document" || isNavigationRequest(request)) {
-    event.respondWith(networkFirst(request));
+    event.respondWith(networkFirst(request, { fallbackToOfflinePage: true }));
     return;
   }
 
@@ -104,6 +113,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.origin === origin && url.pathname.startsWith("/_next/")) {
+    // Never return offline HTML for JS/CSS chunks.
     event.respondWith(networkFirst(request));
     return;
   }
