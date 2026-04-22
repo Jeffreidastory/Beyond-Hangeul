@@ -25,6 +25,9 @@ const montserrat = Montserrat({
 export const metadata = {
   title: "Beyond Hangeul",
   description: "Learn Korean with structured lessons, vocabulary, and progress tracking.",
+};
+
+export const viewport = {
   themeColor: "#0b1728",
 };
 

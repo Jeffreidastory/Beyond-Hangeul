@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import AuthNavbar from "@/components/AuthNavbar";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
@@ -31,7 +30,6 @@ function decodeMessage(message) {
 
 export default function ConfirmSignupPage() {
   const { isLight } = useTheme();
-  const searchParams = useSearchParams();
   const [status, setStatus] = useState(STATUS.CHECKING);
   const [title, setTitle] = useState("Confirming your account...");
   const [description, setDescription] = useState("Please wait while we verify your signup link.");
@@ -42,13 +40,15 @@ export default function ConfirmSignupPage() {
   useEffect(() => {
     if (hasProcessedRef.current) return;
     hasProcessedRef.current = true;
+    if (typeof window === "undefined") return;
 
     const run = async () => {
-      const code = searchParams.get("code");
-      const tokenHash = searchParams.get("token_hash");
-      const type = searchParams.get("type");
-      const nextPath = normalizeNextPath(searchParams.get("next"));
-      const authError = searchParams.get("error_description") || searchParams.get("error");
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      const tokenHash = params.get("token_hash");
+      const type = params.get("type");
+      const nextPath = normalizeNextPath(params.get("next"));
+      const authError = params.get("error_description") || params.get("error");
 
       if (authError) {
         setStatus(STATUS.ERROR);
@@ -111,7 +111,7 @@ export default function ConfirmSignupPage() {
     };
 
     void run();
-  }, [searchParams]);
+  }, []);
 
   const pageBg = isLight ? "bg-[#eef3ff] text-slate-900" : "bg-[#031425] text-white";
   const panelBg = isLight ? "border-slate-200 bg-white/95" : "border-white/20 bg-[#0a1e35]/80";
