@@ -198,6 +198,7 @@ export default function UserDashboardView({
     initialLearningData?.worksheetScores || {},
   );
   const [openModulePreviews, setOpenModulePreviews] = useState({});
+  const [expandedModuleTopics, setExpandedModuleTopics] = useState({});
   const [modulePreviewUrls, setModulePreviewUrls] = useState({});
   const [modulePreviewLoading, setModulePreviewLoading] = useState({});
   const [calendarMatrix, setCalendarMatrix] = useState(null);
@@ -333,30 +334,63 @@ export default function UserDashboardView({
     return new Date(subscription.expiryDate) > new Date();
   }, []);
 
-  const renderModuleTopic = useCallback((topicTitle) => {
-    if (!topicTitle) return null;
-    const lines = String(topicTitle)
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (!lines.length) return null;
+  const renderModuleTopic = useCallback(
+    (topicTitle, moduleId) => {
+      if (!topicTitle) return null;
+      const lines = String(topicTitle)
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (!lines.length) return null;
 
-    return (
-      <div className="mt-1 space-y-1 text-sm italic">
-        {lines.map((line, index) => {
-          const cleanedLine = line
-            .replace(/^\u2022\s*/u, "")
-            .replace(/^[-*]\s*/u, "");
-          return (
-            <div key={index} className={`flex items-start gap-2 ${isLight ? "text-slate-900" : "text-slate-300"}`}>
-              <span className="mt-0.5 text-xs text-amber-300">•</span>
-              <span className="whitespace-pre-wrap">{cleanedLine}</span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }, [isLight]);
+      const isExpanded = Boolean(expandedModuleTopics[moduleId]);
+      const visibleLines = isExpanded ? lines : lines.slice(0, 2);
+      const hasMoreLines = lines.length > 2;
+
+      const renderLines = (items) => (
+        <div className="space-y-1 text-sm leading-5 italic">
+          {items.map((line, index) => {
+            const cleanedLine = line
+              .replace(/^\u2022\s*/u, "")
+              .replace(/^[-*]\s*/u, "");
+            return (
+              <div
+                key={index}
+                className={`flex min-w-0 items-start gap-2 ${isLight ? "text-slate-900" : "text-slate-300"}`}
+              >
+                <span className="mt-0.5 shrink-0 text-xs text-amber-300">•</span>
+                <span className="min-w-0 wrap-break-word whitespace-pre-wrap">{cleanedLine}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+
+      return (
+        <div className="mt-1">
+          <div className="hidden lg:block">{renderLines(lines)}</div>
+          <div className="block lg:hidden">
+            {renderLines(visibleLines)}
+            {hasMoreLines ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedModuleTopics((prev) => ({
+                    ...prev,
+                    [moduleId]: !prev[moduleId],
+                  }))
+                }
+                className="mt-2 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400 transition hover:text-amber-300 focus:outline-none"
+              >
+                {isExpanded ? "Show less topics" : `View all ${lines.length} topics`}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      );
+    },
+    [expandedModuleTopics, isLight],
+  );
 
   const refreshLearningData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
@@ -1435,9 +1469,9 @@ export default function UserDashboardView({
               >
                 {module.moduleName}
               </h3>
-              <div className="mt-1 flex items-end justify-between gap-4">
+              <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div className="min-w-0">
-                  {renderModuleTopic(module.topicTitle) || (
+                  {renderModuleTopic(module.topicTitle, module.id) || (
                     <p
                       className={`text-sm italic ${module.isLocked && isPremium && !hasPremiumWorksheetAccess ? "text-white" : isLight ? "text-slate-900" : "text-slate-300"}`}
                     >
@@ -1447,7 +1481,7 @@ export default function UserDashboardView({
                 </div>
 
                 {hasAttachments && !module.isInactive && !module.isLocked ? (
-                  <div className="shrink-0 min-w-0 text-right">
+                  <div className="shrink-0 min-w-0 text-left sm:text-right">
                     <button
                       type="button"
                       onClick={() => void toggleModulePreview(module)}
@@ -2250,12 +2284,12 @@ export default function UserDashboardView({
         </div>
       </header>
 
-      <div className={`fixed inset-0 z-30 bg-black/40 transition-opacity duration-300 lg:hidden ${accountDrawerOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`} onClick={handleToggleAccountDrawer} />
-      <aside className={`fixed inset-y-0 left-0 z-40 w-[min(92vw,320px)] transform overflow-y-auto border-r bg-[#0f1728] p-4 shadow-2xl transition duration-300 lg:hidden ${accountDrawerOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <div className={`fixed inset-0 z-30 transition-opacity duration-300 lg:hidden ${accountDrawerOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"} ${isLight ? "bg-slate-950/10" : "bg-black/40"}`} onClick={handleToggleAccountDrawer} />
+      <aside className={`fixed inset-y-0 left-0 z-40 w-[min(92vw,320px)] transform overflow-y-auto border-r p-4 shadow-2xl transition duration-300 lg:hidden ${accountDrawerOpen ? "translate-x-0" : "-translate-x-full"} ${isLight ? "border-slate-200 bg-white text-slate-900" : "border-white/10 bg-[#0b1728] text-slate-100"}`}>
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-white">Account</p>
-            <p className="text-xs text-slate-400">Profile & notifications</p>
+            <p className={`text-sm font-semibold ${isLight ? "text-slate-950" : "text-white"}`}>Account</p>
+            <p className={`text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>Profile & notifications</p>
           </div>
           <button
             type="button"
@@ -2267,7 +2301,7 @@ export default function UserDashboardView({
           </button>
         </div>
 
-        <div className={`rounded-3xl border p-4 ${isLight ? "border-slate-200 bg-white text-slate-900" : "border-white/10 bg-[#07111f] text-white"}`}>
+        <div className={`rounded-3xl border p-4 ${isLight ? "border-slate-200 bg-slate-50 text-slate-900" : "border-white/10 bg-[#07111f] text-white"}`}>
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: avatarColor }}>
               {initials}
@@ -2447,7 +2481,7 @@ export default function UserDashboardView({
       </div>
 
       <div className="lg:hidden">
-        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0b1728]/95 backdrop-blur px-2 py-2 shadow-[0_-12px_45px_rgba(0,0,0,0.12)]">
+        <nav className={`fixed bottom-0 left-0 right-0 z-40 border-t px-2 py-2 shadow-[0_-12px_45px_rgba(0,0,0,0.12)] backdrop-blur ${isLight ? "border-slate-200 bg-white/95" : "border-white/10 bg-[#0b1728]/95"}`}>
           <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-1 pb-1">
             {menuItems.map((item) => {
               const Icon = item.icon;
@@ -2457,7 +2491,7 @@ export default function UserDashboardView({
                   key={item.key}
                   type="button"
                   onClick={() => setTab(item.key)}
-                  className={`shrink-0 min-w-18 rounded-3xl px-3 py-2 text-[11px] font-semibold transition ${isActive ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
+                  className={`shrink-0 min-w-18 rounded-3xl px-3 py-2 text-[11px] font-semibold transition ${isActive ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-100" : "text-slate-200 hover:bg-white/10"}`}
                 >
                   <div className="flex flex-col items-center justify-center gap-1">
                     <Icon size={18} />
