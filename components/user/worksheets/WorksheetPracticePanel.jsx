@@ -372,7 +372,7 @@ export default function WorksheetPracticePanel({
     writingSequences,
   ]);
 
-  const keyboardButtonClass = `rounded-lg border px-2 py-2 text-sm font-semibold transition ${
+  const keyboardButtonClass = `rounded-lg border px-1.5 py-2 text-xs font-semibold transition sm:px-2 sm:text-sm ${
     isLight
       ? "border-slate-300 bg-white text-slate-800 hover:bg-slate-100 active:bg-yellow-400"
       : "border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700 active:bg-yellow-500 active:text-[#0b1728]"
@@ -473,17 +473,17 @@ export default function WorksheetPracticePanel({
   }
 
   return (
-    <section className={`mx-auto max-w-5xl rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
+    <section className={`mx-auto w-full max-w-5xl rounded-2xl border p-3 pb-24 sm:p-4 sm:pb-6 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}>
 
       {mode === "writing" ? (
-        <div className="space-y-5 max-w-6xl mx-auto">
+        <div className="mx-auto w-full max-w-6xl space-y-5">
           <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-            <div className={`rounded-4xl border p-6 text-center ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
+            <div className={`rounded-4xl border p-4 text-center sm:p-6 ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
               <div className="text-[5rem] font-black leading-none text-amber-300 sm:text-[6rem]">{currentLetter || "ㄱ"}</div>
               <p className={`mt-3 text-sm ${isLight ? "text-slate-700" : "text-slate-300"}`}>Sound: {currentSound || "—"}</p>
             </div>
 
-            <div className={`rounded-4xl border p-5 ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
+            <div className={`rounded-4xl border p-4 sm:p-5 ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -501,7 +501,7 @@ export default function WorksheetPracticePanel({
                 </div>
 
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-                  <div className="relative flex-1 min-w-65">
+                  <div className="relative min-w-0 flex-1">
                     <input
                       autoFocus
                       disabled={writingFinished}
@@ -526,7 +526,7 @@ export default function WorksheetPracticePanel({
                     type="button"
                     onClick={writingFinished ? startQuiz : handleContinue}
                     disabled={!canAction}
-                    className={`inline-flex h-14 items-center justify-center rounded-3xl px-6 text-sm font-semibold uppercase tracking-[0.15em] transition ${
+                    className={`inline-flex h-14 w-full items-center justify-center rounded-3xl px-6 text-sm font-semibold uppercase tracking-[0.15em] transition sm:w-auto ${
                       canAction
                         ? "bg-amber-400 text-[#0b1728] shadow-lg shadow-amber-400/25 hover:bg-amber-300"
                         : "cursor-not-allowed bg-white/10 text-slate-500"
@@ -549,11 +549,15 @@ export default function WorksheetPracticePanel({
             </div>
           </div>
 
-          <div className={`rounded-4xl border p-5 ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
+          <div className={`rounded-2xl border px-4 py-3 text-xs sm:text-sm lg:hidden ${isLight ? "border-amber-200 bg-amber-50 text-amber-900" : "border-amber-400/30 bg-amber-400/10 text-amber-200"}`}>
+            Mobile note: To answer in Korean, install and use a Hangul/Korean keyboard on your phone.
+          </div>
+
+          <div className={`hidden rounded-4xl border p-4 sm:p-5 lg:block ${isLight ? "border-slate-200 bg-white/90" : "border-white/10 bg-[#0f172c]"}`}>
             <div className={`mb-3 text-xs uppercase tracking-[0.3em] ${isLight ? "text-slate-500" : "text-slate-400"}`}>Korean Keyboard</div>
-            <div className="space-y-2">
+            <div className="space-y-2 overflow-x-auto pb-1">
               {KEYBOARD_ROWS.map((row, rowIndex) => (
-                <div key={rowIndex} className={`grid gap-2 ${rowIndex === 0 ? "grid-cols-10" : rowIndex === 1 ? "grid-cols-9" : "grid-cols-7"}`}>
+                <div key={rowIndex} className={`grid min-w-[17.5rem] gap-1.5 sm:min-w-0 sm:gap-2 ${rowIndex === 0 ? "grid-cols-10" : rowIndex === 1 ? "grid-cols-9" : "grid-cols-7"}`}>
                   {row.map((key) => (
                     <button
                       key={key}

@@ -14,7 +14,7 @@ export default function RegisterPage() {
   const panelBg = isLight ? "border-slate-200 bg-white/95" : "border-white/20 bg-[#0a1e35]/80";
 
   return (
-    <section className={`fade-rise relative left-1/2 right-1/2 -mx-[50vw] min-h-[calc(100vh-73px)] w-screen overflow-hidden ${pageBg} pt-20`}>
+    <section className={`fade-rise relative left-1/2 right-1/2 -mx-[50vw] min-h-screen w-screen overflow-hidden ${pageBg}`}>
       <style>{`
         body > main {
           padding-top: 0 !important;
@@ -40,7 +40,7 @@ export default function RegisterPage() {
         />
       </div>
 
-      <div className="relative mx-auto flex w-full max-w-7xl items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex min-h-[calc(100vh-73px)] w-full max-w-7xl items-center justify-center px-4 pb-6 pt-20 sm:px-6 lg:px-8">
         <div className={`w-full max-w-lg rounded-3xl border p-4 shadow-2xl backdrop-blur-sm sm:p-6 ${panelBg}`}>
           <div className="mx-auto mb-2 w-fit">
             <Image src={BHLogo} alt="Beyond Hangeul logo" width={84} height={84} className="object-contain" />

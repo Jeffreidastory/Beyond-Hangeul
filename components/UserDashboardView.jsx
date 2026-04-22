@@ -24,6 +24,7 @@ import {
   Library,
   Menu,
   Moon,
+  Printer,
   Search,
   Sun,
   X,
@@ -107,12 +108,14 @@ const worksheetsSubmenuItems = [
   {
     key: WORKSHEETS_VIEW_ONLINE,
     label: "Online Worksheets",
-    description: "Practice writing and quiz mode worksheets online.",
+    description: "Interactive writing and quiz modes.",
+    icon: CheckSquare,
   },
   {
     key: WORKSHEETS_VIEW_PRINTABLE,
     label: "Printable Worksheets",
-    description: "Open and download worksheet files from admin uploads.",
+    description: "Downloadable PDF files for practice.",
+    icon: Printer,
   },
 ];
 
@@ -525,6 +528,12 @@ export default function UserDashboardView({
       document.removeEventListener("touchstart", handleOutsideMenuClick);
     };
   }, [mobileWorksheetsMenuOpen, worksheetsMenuOpen]);
+
+  useEffect(() => {
+    if (isSidebarCollapsed) {
+      setWorksheetsMenuOpen(false);
+    }
+  }, [isSidebarCollapsed]);
 
   const refreshLearningData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
@@ -1838,26 +1847,67 @@ export default function UserDashboardView({
   );
 
   const renderWorksheetsSubmenuContent = ({ mobile = false } = {}) => (
-    <div className={`${mobile ? "space-y-2" : "space-y-1.5"}`}>
+    <div className={`${mobile ? "space-y-2.5" : "space-y-2"}`}>
       {worksheetsSubmenuItems.map((entry) => {
         const isActive = activeTab === "worksheets" && worksheetsView === entry.key;
+        const SubmenuIcon = entry.icon;
         return (
           <button
             key={entry.key}
             type="button"
             onClick={() => openWorksheetsView(entry.key)}
-            className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+            className={`group relative w-full overflow-hidden rounded-xl border px-3 py-2.5 text-left transition ${
               isActive
-                ? "border-amber-400/60 bg-amber-400/15 text-amber-200"
+                ? isLight
+                  ? "border-amber-300 bg-amber-50 text-amber-900 shadow-[0_0_0_1px_rgba(251,191,36,0.35)_inset]"
+                  : "border-amber-300/55 bg-gradient-to-r from-[#3b465d] via-[#3f4d67] to-[#314155] text-amber-100 shadow-[0_0_0_1px_rgba(252,211,77,0.2)_inset]"
                 : isLight
-                  ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                  : "border-white/10 bg-[#0f1d32] text-slate-200 hover:bg-white/10"
+                  ? "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                  : "border-white/10 bg-[#11243b] text-slate-100 hover:bg-[#162f4d]"
             }`}
           >
-            <p className="text-sm font-semibold">{entry.label}</p>
-            <p className={`mt-1 text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>
-              {entry.description}
-            </p>
+            <div className="grid grid-cols-[auto_1px_minmax(0,1fr)] items-start gap-3">
+              <span
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border ${
+                  isActive
+                    ? isLight
+                      ? "border-amber-300/80 bg-amber-100 text-amber-700"
+                      : "border-amber-200/50 bg-amber-300/10 text-amber-200"
+                    : isLight
+                      ? "border-slate-300 bg-white text-slate-600 group-hover:text-slate-900"
+                      : "border-white/15 bg-[#0f1d32] text-slate-300 group-hover:text-white"
+                }`}
+              >
+                <SubmenuIcon size={18} />
+              </span>
+              <span
+                className={`mt-0.5 block h-8 w-px ${
+                  isActive
+                    ? isLight
+                      ? "bg-amber-300/80"
+                      : "bg-amber-200/45"
+                    : isLight
+                      ? "bg-slate-300"
+                      : "bg-white/15"
+                }`}
+              />
+              <span className="min-w-0">
+                <span className="block text-[1.04rem] font-semibold leading-5">{entry.label}</span>
+                <span
+                  className={`mt-1 block text-xs leading-4 whitespace-normal ${
+                    isActive
+                      ? isLight
+                        ? "text-amber-800/85"
+                        : "text-slate-200/85"
+                      : isLight
+                        ? "text-slate-500"
+                        : "text-slate-400"
+                  }`}
+                >
+                  {entry.description}
+                </span>
+              </span>
+            </div>
           </button>
         );
       })}
@@ -1931,10 +1981,10 @@ export default function UserDashboardView({
 
       return (
         <main
-          className={`space-y-5 rounded-2xl p-5 lg:p-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}
+          className={`space-y-5 rounded-2xl p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}
         >
           <section
-            className={`rounded-2xl border p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}
+            className={`rounded-2xl border p-3 sm:p-4 ${isLight ? "border-slate-200 bg-slate-50" : "border-white/10 bg-[#13243d]"}`}
           >
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
@@ -1990,7 +2040,7 @@ export default function UserDashboardView({
 
               {selectedWorksheet ? (
                 <div className="flex flex-wrap items-center justify-end gap-3">
-                  <div className={`inline-flex flex-wrap items-center gap-2 rounded-3xl border px-3 py-2 text-sm transition ${isLight ? "border-slate-200 bg-slate-100 text-slate-700" : "border-white/10 bg-[#0f1d32] text-slate-200"}`}>
+                  <div className={`inline-flex w-full flex-wrap items-center justify-center gap-2 rounded-3xl border px-3 py-2 text-sm transition sm:w-auto ${isLight ? "border-slate-200 bg-slate-100 text-slate-700" : "border-white/10 bg-[#0f1d32] text-slate-200"}`}>
                     <button
                       type="button"
                       onClick={() => setWorksheetMode("writing")}
@@ -2791,7 +2841,7 @@ export default function UserDashboardView({
               const Icon = item.icon;
               const isWorksheetsItem = item.key === "worksheets";
               const isActive = isWorksheetsItem
-                ? activeTab === "worksheets"
+                ? activeTab === "worksheets" || mobileWorksheetsMenuOpen
                 : activeTab === item.key;
               const navItemClass = `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                 isSidebarCollapsed ? "justify-center" : "justify-start"
@@ -2800,6 +2850,10 @@ export default function UserDashboardView({
                   ? isLight
                     ? "bg-amber-100 text-amber-800"
                     : "bg-amber-400/20 text-amber-300"
+                  : isWorksheetsItem
+                    ? isLight
+                      ? "text-slate-700"
+                      : "text-slate-300"
                   : isLight
                     ? "text-slate-700 hover:bg-slate-100"
                     : "text-slate-300 hover:bg-white/10"
@@ -2810,51 +2864,67 @@ export default function UserDashboardView({
                   key={item.key}
                   className="relative"
                   ref={isWorksheetsItem ? worksheetsMenuRef : undefined}
-                  onMouseEnter={
-                    isWorksheetsItem
-                      ? () => setWorksheetsMenuOpen(true)
-                      : undefined
-                  }
-                  onMouseLeave={
-                    isWorksheetsItem
-                      ? () => setWorksheetsMenuOpen(false)
-                      : undefined
-                  }
                 >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isWorksheetsItem) {
-                        setWorksheetsMenuOpen((open) => !open);
-                        return;
-                      }
-                      setTab(item.key);
-                    }}
-                    aria-haspopup={isWorksheetsItem ? "menu" : undefined}
-                    aria-expanded={isWorksheetsItem ? worksheetsMenuOpen : undefined}
-                    className={navItemClass}
-                  >
-                    <span className="inline-flex items-center justify-center rounded-full bg-transparent p-1">
-                      <Icon size={isSidebarCollapsed ? 20 : 22} />
-                    </span>
-                    <span
-                      className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${
-                        isSidebarCollapsed
-                          ? "max-w-0 opacity-0 lg:max-w-40 lg:group-hover:max-w-full lg:group-hover:opacity-100"
-                          : "max-w-full opacity-100"
-                      }`}
-                    >
-                      {item.label}
-                    </span>
+                  <div className={isWorksheetsItem ? "flex items-center gap-1" : undefined}>
                     {isWorksheetsItem ? (
-                      <ChevronRight
-                        size={16}
-                        className={`ml-auto transition-transform ${
-                          worksheetsMenuOpen ? "rotate-90" : ""
+                      <div
+                        aria-hidden="true"
+                        className={`${navItemClass} flex-1 cursor-default select-none`}
+                      >
+                        <span className="inline-flex items-center justify-center rounded-full bg-transparent p-1">
+                          <Icon size={isSidebarCollapsed ? 20 : 22} />
+                        </span>
+                        <span
+                          className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${
+                            isSidebarCollapsed
+                              ? "max-w-0 opacity-0 lg:max-w-40 lg:group-hover:max-w-full lg:group-hover:opacity-100"
+                              : "max-w-full opacity-100"
+                          }`}
+                        >
+                          {item.label}
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setTab(item.key)}
+                        className={navItemClass}
+                      >
+                        <span className="inline-flex items-center justify-center rounded-full bg-transparent p-1">
+                          <Icon size={isSidebarCollapsed ? 20 : 22} />
+                        </span>
+                        <span
+                          className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${
+                            isSidebarCollapsed
+                              ? "max-w-0 opacity-0 lg:max-w-40 lg:group-hover:max-w-full lg:group-hover:opacity-100"
+                              : "max-w-full opacity-100"
+                          }`}
+                        >
+                          {item.label}
+                        </span>
+                      </button>
+                    )}
+
+                    {isWorksheetsItem && !isSidebarCollapsed ? (
+                      <button
+                        type="button"
+                        onClick={() => setWorksheetsMenuOpen((open) => !open)}
+                        aria-label={worksheetsMenuOpen ? "Close worksheets menu" : "Open worksheets menu"}
+                        aria-haspopup="menu"
+                        aria-expanded={worksheetsMenuOpen}
+                        className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
+                          isLight
+                            ? "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                            : "text-slate-300 hover:bg-white/10 hover:text-white"
                         }`}
-                      />
+                      >
+                        <ChevronRight
+                          size={16}
+                          className={`transition-transform ${worksheetsMenuOpen ? "rotate-90" : ""}`}
+                        />
+                      </button>
                     ) : null}
-                  </button>
+                  </div>
 
                   {isWorksheetsItem && worksheetsMenuOpen ? (
                     <div

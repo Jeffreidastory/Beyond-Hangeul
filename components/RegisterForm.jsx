@@ -22,6 +22,7 @@ export default function RegisterForm() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [awaitingEmailConfirmation, setAwaitingEmailConfirmation] = useState(false);
   const router = useRouter();
 
   const requestOtp = async () => {
@@ -56,6 +57,7 @@ export default function RegisterForm() {
     event.preventDefault();
     setError("");
     setMessage("");
+    setAwaitingEmailConfirmation(false);
 
     if (step === 1) {
       if (!firstName || !lastName || !country || !province || !city) {
@@ -106,6 +108,10 @@ export default function RegisterForm() {
         email,
         password,
         options: {
+          emailRedirectTo:
+            typeof window !== "undefined"
+              ? `${window.location.origin}/auth/confirm`
+              : undefined,
           data: {
             first_name: firstName,
             last_name: lastName,
@@ -126,13 +132,52 @@ export default function RegisterForm() {
         return;
       }
 
-      setMessage("Registration successful. Check your email to confirm your account.");
+      setAwaitingEmailConfirmation(true);
+      setMessage("Account created. Confirm your email to finish signup.");
     } catch (signUpFlowError) {
       setError(signUpFlowError.message);
     } finally {
       setLoading(false);
     }
   };
+
+  if (awaitingEmailConfirmation) {
+    return (
+      <div className="mt-6 space-y-4">
+        <div className="rounded-2xl border border-emerald-300/40 bg-emerald-50 px-4 py-4 text-emerald-800">
+          <p className="text-base font-semibold">Check your inbox</p>
+          <p className="mt-1 text-sm">
+            We sent a confirmation link to <span className="font-semibold">{email}</span>. Open it to verify your
+            account, then sign in.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-line bg-white px-4 py-3 text-sm text-foreground">
+          <p>Tips:</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>Check your spam or promotions folder.</li>
+            <li>The confirmation link opens a secure verify page.</li>
+            <li>If the link expires, go back and register again.</li>
+          </ul>
+        </div>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => router.push("/auth/login")}
+            className="w-full rounded-xl bg-[#f6b21f] px-4 py-2 font-semibold text-[#07223a] transition hover:bg-[#ffc43d]"
+          >
+            Go to Login
+          </button>
+          <button
+            type="button"
+            onClick={() => setAwaitingEmailConfirmation(false)}
+            className="w-full rounded-xl border border-line bg-white px-4 py-2 font-semibold text-foreground transition hover:bg-[#fff4e8]"
+          >
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={onSubmit} className="mt-6 space-y-4">
