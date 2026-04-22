@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const SHELL_CACHE = `beyond-hangeul-shell-${CACHE_VERSION}`;
 const PDF_CACHE = `beyond-hangeul-pdf-${CACHE_VERSION}`;
 const OFFLINE_PAGE = "/offline.html";
@@ -103,10 +103,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (url.origin === origin && url.pathname.startsWith("/_next/")) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
   if (
     url.origin === origin &&
-    (url.pathname.startsWith("/_next/") ||
-      url.pathname.startsWith("/icons/") ||
+    (url.pathname.startsWith("/icons/") ||
       url.pathname === "/manifest.webmanifest" ||
       url.pathname === "/offline.html")
   ) {

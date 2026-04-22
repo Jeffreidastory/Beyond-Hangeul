@@ -40,19 +40,24 @@ export default function LandingNavbar() {
       } = await supabase.auth.getSession();
 
       const destination = session?.user ? "/dashboard" : "/auth/login";
-      await router.push(destination);
+      const redirected = await router.push(destination);
+
+      if (redirected === false) {
+        const elapsed = Date.now() - startAt;
+        const remaining = MIN_SIGN_IN_LOADING_MS - elapsed;
+        if (remaining > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remaining));
+        }
+        if (isMountedRef.current) {
+          setIsSigningIn(false);
+        }
+      }
     } catch (error) {
       window.sessionStorage.removeItem("landing-signin-loading");
-      throw error;
-    } finally {
-      const elapsed = Date.now() - startAt;
-      const remaining = MIN_SIGN_IN_LOADING_MS - elapsed;
-      if (remaining > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remaining));
-      }
       if (isMountedRef.current) {
         setIsSigningIn(false);
       }
+      throw error;
     }
   };
 

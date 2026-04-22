@@ -137,10 +137,10 @@ export default function UserDashboardView({
   const [activeTab, setActiveTab] = useState(
     () => searchParams.get("tab") || "home",
   );
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [moduleFileProgress, setModuleFileProgress] = useState({});
@@ -155,8 +155,7 @@ export default function UserDashboardView({
   }, []);
   const { isLight, toggleTheme } = useTheme();
   const isWorksheetsTab = activeTab === "worksheets";
-  const isSidebarExpanded = sidebarOpen || isSidebarHovered;
-  const isSidebarCollapsed = !isSidebarExpanded;
+  const isSidebarCollapsed = !isSidebarHovered;
   const [learningData, setLearningData] = useState(
     initialLearningData || {
       modules: [],
@@ -222,6 +221,17 @@ export default function UserDashboardView({
       await loadNotifications(true);
       setNotifications((prevNotifications) => prevNotifications.map((item) => ({ ...item, isRead: true })));
       void markAllNotificationsReadShared(userId);
+    }
+  };
+
+  const handleToggleAccountDrawer = async () => {
+    const willOpen = !accountDrawerOpen;
+    setAccountDrawerOpen(willOpen);
+    if (willOpen) {
+      await loadNotifications(true);
+      setNotifications((prevNotifications) => prevNotifications.map((item) => ({ ...item, isRead: true })));
+      void markAllNotificationsReadShared(userId);
+      setNotificationsOpen(false);
     }
   };
 
@@ -1437,7 +1447,7 @@ export default function UserDashboardView({
                 </div>
 
                 {hasAttachments && !module.isInactive && !module.isLocked ? (
-                  <div className="flex-shrink-0 min-w-0 text-right">
+                  <div className="shrink-0 min-w-0 text-right">
                     <button
                       type="button"
                       onClick={() => void toggleModulePreview(module)}
@@ -1484,9 +1494,9 @@ export default function UserDashboardView({
                             <div className="flex w-full items-center gap-3 min-w-0">
                               <FileText
                                 size={16}
-                                className="flex-shrink-0 text-amber-300"
+                                className="shrink-0 text-amber-300"
                               />
-                              <span className="min-w-0 break-words truncate text-sm">
+                              <span className="min-w-0 wrap-break-word truncate text-sm">
                                 {attachment.fileName || attachment.title || `Section ${index + 1}`}
                               </span>
                             </div>
@@ -2008,22 +2018,13 @@ export default function UserDashboardView({
 
   return (
     <section
-      className={`min-h-screen w-full ${isLight ? "bg-[#eef3ff] text-slate-900" : "bg-[#07111f] text-slate-100"}`}
+      className={`min-h-screen w-full overflow-x-hidden pb-24 lg:pb-0 ${isLight ? "bg-[#eef3ff] text-slate-900" : "bg-[#07111f] text-slate-100"}`}
     >
       <header
         className={`sticky top-0 z-20 border-b px-4 py-3 backdrop-blur sm:px-6 lg:px-8 ${isLight ? "border-slate-200 bg-white/95" : "border-white/10 bg-[#0b1728]/95"}`}
       >
         <div className="flex w-full items-center gap-3">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen((open) => !open)}
-              className={`rounded-lg border p-2 lg:hidden ${isLight ? "border-slate-300 text-slate-700" : "border-white/20 text-slate-200"}`}
-              aria-label="Toggle navigation"
-            >
-              {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
-            </button>
-
             <div className="min-w-55 text-lg font-bold [font-family:var(--font-body)]">
               <span className={isLight ? "text-slate-900" : "text-white"}>
                 Beyond{" "}
@@ -2100,7 +2101,16 @@ export default function UserDashboardView({
             )}
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-3">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={handleToggleAccountDrawer}
+              aria-label="Open account drawer"
+              className={`rounded-lg border p-2 lg:hidden ${isLight ? "border-slate-300 text-slate-700" : "border-white/20 text-slate-200"}`}
+            >
+              <Menu size={18} />
+            </button>
+
             <button
               type="button"
               onClick={toggleTheme}
@@ -2123,7 +2133,7 @@ export default function UserDashboardView({
               </span>
             </button>
 
-            <div className="relative">
+            <div className="relative hidden sm:block">
               <button
                 type="button"
                 onClick={handleToggleNotifications}
@@ -2201,7 +2211,7 @@ export default function UserDashboardView({
               </p>
             </div>
 
-            <div className="relative">
+            <div className="relative hidden sm:block">
               <button
                 type="button"
                 onClick={() => setDropdownOpen((open) => !open)}
@@ -2240,17 +2250,105 @@ export default function UserDashboardView({
         </div>
       </header>
 
+      <div className={`fixed inset-0 z-30 bg-black/40 transition-opacity duration-300 lg:hidden ${accountDrawerOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`} onClick={handleToggleAccountDrawer} />
+      <aside className={`fixed inset-y-0 left-0 z-40 w-[min(92vw,320px)] transform overflow-y-auto border-r bg-[#0f1728] p-4 shadow-2xl transition duration-300 lg:hidden ${accountDrawerOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-white">Account</p>
+            <p className="text-xs text-slate-400">Profile & notifications</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleToggleAccountDrawer}
+            className={`rounded-lg border p-2 ${isLight ? "border-slate-300 text-slate-700" : "border-white/20 text-slate-200"}`}
+            aria-label="Close account drawer"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className={`rounded-3xl border p-4 ${isLight ? "border-slate-200 bg-white text-slate-900" : "border-white/10 bg-[#07111f] text-white"}`}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: avatarColor }}>
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold">{userName}</p>
+              <p className="truncate text-xs text-slate-400">{userEmail}</p>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            <Link
+              href="/profile"
+              className={`block rounded-2xl px-4 py-3 text-sm transition ${isLight ? "bg-slate-100 text-slate-900 hover:bg-slate-200" : "bg-white/5 text-white hover:bg-white/10"}`}
+            >
+              View Profile
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full rounded-2xl bg-amber-400 px-4 py-3 text-sm font-semibold text-[#0b1728] transition hover:bg-amber-300"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-white">Notifications</p>
+              <p className="text-xs text-slate-400">{unreadCount} unread</p>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                await markAllNotificationsReadShared(userId);
+                setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+              }}
+              className={`text-xs ${isLight ? "text-slate-400 hover:text-slate-900" : "text-slate-400 hover:text-white"}`}
+            >
+              Mark all read
+            </button>
+          </div>
+          <div className="mt-3 max-h-[60vh] overflow-y-auto pr-1 space-y-2">
+            {notificationsLoading ? (
+              <div className={`px-2 py-4 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>Loading notifications...</div>
+            ) : notifications.length === 0 ? (
+              <div className={`px-2 py-4 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>No notifications yet.</div>
+            ) : (
+              notifications.map((notification) => (
+                <button
+                  key={notification.id}
+                  type="button"
+                  onClick={async () => {
+                    if (!notification.isRead) {
+                      await markAllNotificationsReadShared(userId);
+                      setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+                    }
+                  }}
+                  className={`w-full rounded-2xl border px-3 py-3 text-left transition ${notification.isRead ? (isLight ? "border-slate-200 bg-slate-100 text-slate-700 hover:border-slate-300" : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20") : (isLight ? "border-amber-200 bg-amber-50 text-slate-900 shadow-sm shadow-amber-100 hover:border-amber-300" : "border-amber-300/20 bg-white/10 text-white shadow-sm shadow-amber-500/10 hover:border-amber-300")}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-sm font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>{notification.title}</span>
+                    {!notification.isRead && <span className="h-2 w-2 rounded-full bg-amber-400" />}
+                  </div>
+                  <p className={`mt-1 text-xs ${isLight ? "text-slate-600" : "text-slate-400"}`}>{notification.message}</p>
+                  <p className={`mt-2 text-[11px] uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>{formatRelativeTime(notification.createdAt)}</p>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </aside>
+
       <div
         className={`grid w-full grid-cols-1 gap-6 py-6 pl-0 pr-4 sm:pr-6 lg:pr-8 lg:grid-cols-[auto_1fr_320px]`}
       >
         <aside
           onMouseEnter={() => setIsSidebarHovered(true)}
           onMouseLeave={() => setIsSidebarHovered(false)}
-          className={`group ${
-            sidebarOpen
-              ? "translate-x-0 opacity-100"
-              : "-translate-x-full opacity-0 lg:translate-x-0 lg:opacity-100"
-          } fixed left-0 z-30 border-r p-4 transition-all duration-300 ${navHeightClass} ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0b1728]"} ${
+          className={`group fixed left-0 z-30 hidden border-r p-4 transition-all duration-300 lg:block ${navHeightClass} ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0b1728]"} ${
             isSidebarCollapsed ? "lg:w-20" : "lg:w-65"
           } lg:hover:w-65 lg:sticky lg:self-start lg:top-22.25 lg:h-[calc(100vh-7rem)] lg:rounded-r-2xl lg:border ${isLight ? "lg:border-slate-200 lg:bg-white" : "lg:border-white/10 lg:bg-[#0f1d32]"}`}
         >
@@ -2346,6 +2444,30 @@ export default function UserDashboardView({
 
           <LearningUpdatesCard updates={learningUpdates} isLight={isLight} />
         </aside>
+      </div>
+
+      <div className="lg:hidden">
+        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0b1728]/95 backdrop-blur px-2 py-2 shadow-[0_-12px_45px_rgba(0,0,0,0.12)]">
+          <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-1 pb-1">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setTab(item.key)}
+                  className={`shrink-0 min-w-18 rounded-3xl px-3 py-2 text-[11px] font-semibold transition ${isActive ? "bg-amber-400 text-[#0b1728]" : "text-slate-200 hover:bg-white/5"}`}
+                >
+                  <div className="flex flex-col items-center justify-center gap-1">
+                    <Icon size={18} />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </div>
     </section>
   );
