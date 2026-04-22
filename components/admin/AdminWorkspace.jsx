@@ -447,6 +447,28 @@ export default function AdminWorkspace({
 
     return Array.from(groups.values()).sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
   }, [modules, containers]);
+
+  const filteredContainers = useMemo(() => {
+    const normalizedSearch = moduleSearch.trim().toLowerCase();
+    if (!normalizedSearch) return moduleContainers;
+
+    return moduleContainers.filter((container) => {
+      const containerMatches = [container.title, container.subtitle].some((value) =>
+        String(value || "").toLowerCase().includes(normalizedSearch)
+      );
+      if (containerMatches) return true;
+
+      return container.modules.some((module) =>
+        [
+          module.moduleName,
+          module.topicTitle,
+          module.resourceFileName,
+          module.containerTitle,
+          module.containerSubtitle,
+        ].some((value) => String(value || "").toLowerCase().includes(normalizedSearch))
+      );
+    });
+  }, [moduleContainers, moduleSearch]);
   const moduleShakeClass = "motion-safe:animate-[field-shake_280ms_ease-in-out]";
 
   const filteredModules = useMemo(() => {
@@ -455,7 +477,13 @@ export default function AdminWorkspace({
       .filter((item) => (moduleFilterTab === "all" ? true : item.type === moduleFilterTab))
       .filter((item) => {
         if (!normalizedSearch) return true;
-        return [item.moduleName, item.topicTitle, item.resourceFileName].some((value) =>
+        return [
+          item.moduleName,
+          item.topicTitle,
+          item.resourceFileName,
+          item.containerTitle,
+          item.containerSubtitle,
+        ].some((value) =>
           String(value || "").toLowerCase().includes(normalizedSearch)
         );
       })
@@ -1177,7 +1205,13 @@ export default function AdminWorkspace({
       .filter((item) => (moduleFilterTab === "all" ? true : item.type === moduleFilterTab))
       .filter((item) => {
         if (!normalizedSearch) return true;
-        return [item.moduleName, item.topicTitle, item.resourceFileName].some((value) =>
+        return [
+          item.moduleName,
+          item.topicTitle,
+          item.resourceFileName,
+          item.containerTitle,
+          item.containerSubtitle,
+        ].some((value) =>
           String(value || "").toLowerCase().includes(normalizedSearch)
         );
       })
@@ -1248,10 +1282,11 @@ export default function AdminWorkspace({
             </button>
           </div>
 
-          {moduleContainers.length > 0 && (
-            <div className="mb-4 grid gap-3 md:grid-cols-2">
-              {moduleContainers.map((container) => (
-                <div key={container.id} className="rounded-2xl border border-white/10 bg-[#13243d] p-4">
+          {filteredContainers.length > 0 && (
+            <div className="mb-4 max-h-80 overflow-y-auto pr-2">
+              <div className="grid gap-3 md:grid-cols-2">
+                {filteredContainers.map((container) => (
+                  <div key={container.id} className="rounded-2xl border border-white/10 bg-[#13243d] p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="text-lg font-semibold text-white">{container.title}</h3>
@@ -1287,12 +1322,15 @@ export default function AdminWorkspace({
                 </div>
               ))}
             </div>
+          </div>
           )}
 
-          <div className="overflow-x-auto rounded-xl border border-white/10">
-            <table className="w-full min-w-260 text-sm">
-              <thead className="bg-[#13243d] text-slate-300">
-                <tr>
+          <div className="mb-4 overflow-hidden rounded-xl border border-white/10">
+            <div className="overflow-x-auto">
+              <div className="max-h-130 overflow-y-auto">
+                <table className="w-full min-w-260 text-sm">
+                  <thead className="sticky top-0 z-10 bg-[#13243d] text-slate-300">
+                    <tr>
                   <th className="px-3 py-2 text-left">Module Name</th>
                   <th className="px-3 py-2 text-left">Topic / Title</th>
                   <th className="px-3 py-2 text-left">Type</th>
@@ -1376,6 +1414,8 @@ export default function AdminWorkspace({
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
 
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-slate-400">
