@@ -91,3 +91,38 @@ export function useTheme() {
   const context = useContext(ThemeContext);
   return context || defaultThemeContext;
 }
+
+export function AdminThemeProvider({ children }) {
+  const value = useMemo(
+    () => ({
+      themeMode: "dark",
+      isLight: false,
+      setThemeMode: () => {},
+      toggleTheme: () => {},
+      fontSize: 100,
+      setFontSize: () => {},
+    }),
+    []
+  );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export function AdminThemeOverride() {
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const previousTheme = document.documentElement.getAttribute("data-profile-theme");
+    document.documentElement.setAttribute("data-profile-theme", "dark");
+
+    return () => {
+      if (previousTheme) {
+        document.documentElement.setAttribute("data-profile-theme", previousTheme);
+      } else {
+        document.documentElement.removeAttribute("data-profile-theme");
+      }
+    };
+  }, []);
+
+  return null;
+}

@@ -1,6 +1,9 @@
+import { AdminThemeOverride, AdminThemeProvider } from "@/components/theme/ThemeProvider";
+
 export default function AdminLayout({ children }) {
   return (
-    <>
+    <AdminThemeProvider>
+      <AdminThemeOverride />
       <style>{`
         header[data-global-navbar="true"] {
           display: none;
@@ -18,6 +21,6 @@ export default function AdminLayout({ children }) {
         }
       `}</style>
       {children}
-    </>
+    </AdminThemeProvider>
   );
 }

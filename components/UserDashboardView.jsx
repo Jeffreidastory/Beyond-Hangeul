@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Bookmark,
@@ -201,6 +202,8 @@ export default function UserDashboardView({
   const [openModulePreviews, setOpenModulePreviews] = useState({});
   const [expandedModuleTopics, setExpandedModuleTopics] = useState({});
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [notificationPanelStyles, setNotificationPanelStyles] = useState({ left: 0, top: 0 });
   const [modulePreviewUrls, setModulePreviewUrls] = useState({});
   const [modulePreviewLoading, setModulePreviewLoading] = useState({});
   const [calendarMatrix, setCalendarMatrix] = useState(null);
@@ -212,15 +215,32 @@ export default function UserDashboardView({
   );
 
   const unreadCount = notifications.filter((notification) => !notification.isRead).length;
+  const notificationButtonRef = useRef(null);
+
+  const positionNotificationPanel = useCallback(() => {
+    const rect = notificationButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const iconCenterX = rect.left + rect.width / 2;
+    const panelTop = rect.bottom + 12;
+
+    setNotificationPanelStyles({ left: iconCenterX, top: panelTop });
+  }, []);
 
   const getModuleFileIdentifier = (moduleId, index = 0) => {
     return `${moduleId}:section-${index}`;
   };
 
+  const clearNotifications = useCallback(() => {
+    setNotifications([]);
+    setNotificationsLoading(false);
+  }, []);
+
   const handleToggleNotifications = async () => {
     const willOpen = !notificationsOpen;
     setNotificationsOpen(willOpen);
     if (willOpen) {
+      positionNotificationPanel();
       await loadNotifications(true);
       setNotifications((prevNotifications) => prevNotifications.map((item) => ({ ...item, isRead: true })));
       void markAllNotificationsReadShared(userId);
@@ -408,6 +428,16 @@ export default function UserDashboardView({
       window.removeEventListener("scroll", handleScroll);
     };
   }, [activeTab]);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (notificationsOpen) {
+      positionNotificationPanel();
+    }
+  }, [notificationsOpen, positionNotificationPanel]);
 
   const refreshLearningData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
@@ -1446,7 +1476,7 @@ export default function UserDashboardView({
                 : "border-white/10 bg-[#0f1d32]"
             }`}
           >
-            <div className="absolute right-3 top-3 z-30 flex items-center gap-2 pointer-events-auto">
+            <div className="absolute right-3 top-3 z-10 flex items-center gap-2 pointer-events-auto">
               <span
                 className={`inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                   isPremium
@@ -2201,23 +2231,43 @@ export default function UserDashboardView({
                 )}
               </button>
 
-              {notificationsOpen && (
-                <div className={`absolute right-0 z-40 mt-2 w-80 max-h-96 overflow-hidden rounded-3xl shadow-2xl ${isLight ? "border border-slate-200 bg-white" : "border border-white/10 bg-[#0f1d32]"}`}>
-                  <div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${isLight ? "border-slate-200" : "border-white/10"}`}>
-                    <div>
-                      <p className={`text-sm font-semibold ${isLight ? "text-slate-950" : "text-white"}`}>Notifications</p>
-                      <p className={`text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>{unreadCount} unread</p>
+              {notificationsOpen && isMounted ?
+                createPortal(
+                <div
+                  className={`fixed z-1100 w-[min(92vw,20rem)] max-h-[calc(100vh-5rem)] overflow-hidden rounded-3xl shadow-2xl ${isLight ? "border border-slate-200 bg-white" : "border border-white/10 bg-[#0f1d32]"}`}
+                  style={{
+                    top: notificationPanelStyles.top,
+                    left: notificationPanelStyles.left,
+                    transform: "translateX(-100%)",
+                  }}
+                >
+                  <span className={`absolute -top-2 right-5 h-3 w-3 rotate-45 ${isLight ? "bg-white" : "bg-[#0f1d32]"} border-l border-t ${isLight ? "border-slate-200" : "border-white/10"}`} />
+                  <div className={`flex flex-col gap-3 border-b px-4 py-3 ${isLight ? "border-slate-200" : "border-white/10"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className={`text-sm font-semibold ${isLight ? "text-slate-950" : "text-white"}`}>Notifications</p>
+                        <p className={`text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>{unreadCount} unread</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await markAllNotificationsReadShared(userId);
+                            setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+                          }}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${isLight ? "border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200" : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"}`}
+                        >
+                          Mark all read
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearNotifications}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${isLight ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"}`}
+                        >
+                          Clear All
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await markAllNotificationsReadShared(userId);
-                        setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
-                      }}
-                      className={`text-xs transition ${isLight ? "text-slate-600 hover:text-slate-900" : "text-slate-400 hover:text-white"}`}
-                    >
-                      Mark all read
-                    </button>
                   </div>
 
                   <div className="max-h-80 overflow-y-auto">
@@ -2239,19 +2289,22 @@ export default function UserDashboardView({
                             }}
                             className={`w-full rounded-2xl border px-3 py-3 text-left transition ${notification.isRead ? (isLight ? "border-slate-200 bg-slate-100 text-slate-700 hover:border-slate-300" : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20") : (isLight ? "border-amber-200 bg-amber-50 text-slate-900 shadow-sm shadow-amber-100 hover:border-amber-300" : "border-amber-300/20 bg-white/10 text-white shadow-sm shadow-amber-500/10 hover:border-amber-300")}`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className={`text-sm font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>{notification.title}</span>
-                              {!notification.isRead && <span className="h-2 w-2 rounded-full bg-amber-400" />}
+                            <div className="flex items-start justify-between gap-2 min-w-0">
+                              <div className="min-w-0">
+                                <p className={`truncate text-sm font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>{notification.title}</p>
+                                <p className={`mt-2 text-xs leading-5 ${isLight ? "text-slate-600" : "text-slate-400"}`}>{notification.message}</p>
+                              </div>
+                              {!notification.isRead && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400" />}
                             </div>
-                            <p className={`mt-1 text-xs ${isLight ? "text-slate-600" : "text-slate-400"}`}>{notification.message}</p>
-                            <p className={`mt-2 text-[11px] uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>{formatRelativeTime(notification.createdAt)}</p>
+                            <p className={`mt-3 text-[11px] uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>{formatRelativeTime(notification.createdAt)}</p>
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
-                </div>
-              )}
+                </div>,
+                document.body,
+              ) : null}
             </div>
 
             <div className="hidden text-right sm:block">
@@ -2347,21 +2400,30 @@ export default function UserDashboardView({
         </div>
 
         <div className="mt-5">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-white">Notifications</p>
               <p className="text-xs text-slate-400">{unreadCount} unread</p>
             </div>
-            <button
-              type="button"
-              onClick={async () => {
-                await markAllNotificationsReadShared(userId);
-                setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
-              }}
-              className={`text-xs ${isLight ? "text-slate-400 hover:text-slate-900" : "text-slate-400 hover:text-white"}`}
-            >
-              Mark all read
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  await markAllNotificationsReadShared(userId);
+                  setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+                }}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${isLight ? "border border-slate-200 bg-slate-100 text-slate-900 hover:bg-slate-200" : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"}`}
+              >
+                Mark all read
+              </button>
+              <button
+                type="button"
+                onClick={clearNotifications}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${isLight ? "border border-slate-200 bg-white text-slate-900 hover:bg-slate-50" : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"}`}
+              >
+                Clear All
+              </button>
+            </div>
           </div>
           <div className="mt-3 max-h-[60vh] overflow-y-auto pr-1 space-y-2">
             {notificationsLoading ? (
@@ -2381,12 +2443,14 @@ export default function UserDashboardView({
                   }}
                   className={`w-full rounded-2xl border px-3 py-3 text-left transition ${notification.isRead ? (isLight ? "border-slate-200 bg-slate-100 text-slate-700 hover:border-slate-300" : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20") : (isLight ? "border-amber-200 bg-amber-50 text-slate-900 shadow-sm shadow-amber-100 hover:border-amber-300" : "border-amber-300/20 bg-white/10 text-white shadow-sm shadow-amber-500/10 hover:border-amber-300")}`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-sm font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>{notification.title}</span>
-                    {!notification.isRead && <span className="h-2 w-2 rounded-full bg-amber-400" />}
+                  <div className="flex items-start justify-between gap-2 min-w-0">
+                    <div className="min-w-0">
+                      <p className={`truncate text-sm font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>{notification.title}</p>
+                      <p className={`mt-2 text-xs leading-5 wrap-break-word whitespace-normal ${isLight ? "text-slate-600" : "text-slate-400"}`}>{notification.message}</p>
+                    </div>
+                    {!notification.isRead && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400" />}
                   </div>
-                  <p className={`mt-1 text-xs ${isLight ? "text-slate-600" : "text-slate-400"}`}>{notification.message}</p>
-                  <p className={`mt-2 text-[11px] uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>{formatRelativeTime(notification.createdAt)}</p>
+                  <p className={`mt-3 text-[11px] uppercase tracking-wide ${isLight ? "text-slate-500" : "text-slate-400"}`}>{formatRelativeTime(notification.createdAt)}</p>
                 </button>
               ))
             )}
