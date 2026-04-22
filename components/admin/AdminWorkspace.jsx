@@ -1998,13 +1998,13 @@ export default function AdminWorkspace({
       )}
 
       {isContainerModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
           <form
             onSubmit={(event) => {
               event.preventDefault();
               void saveContainer();
             }}
-            className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5"
+            className="w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 bg-[#0f1d32] p-5 max-h-[calc(100vh-4rem)]"
           >
             <h3 className="text-lg font-semibold">{editingContainer ? "Edit Container" : "Add Container"}</h3>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -2023,28 +2023,30 @@ export default function AdminWorkspace({
               />
               <div className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] p-4">
                 <p className="mb-2 text-sm text-slate-400">Select Modules</p>
-                <div className="grid gap-2">
-                  {modules.map((module) => (
-                    <label
-                      key={module.id}
-                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0f1d32] px-3 py-2 text-sm text-slate-200"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={containerForm.moduleIds.includes(module.id)}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setContainerForm((prev) => {
-                            const nextModuleIds = checked
-                              ? [...prev.moduleIds, module.id]
-                              : prev.moduleIds.filter((id) => id !== module.id);
-                            return { ...prev, moduleIds: nextModuleIds };
-                          });
-                        }}
-                      />
-                      <span>{module.moduleName}</span>
-                    </label>
-                  ))}
+                <div className="max-h-80 overflow-y-auto pr-2">
+                  <div className="grid gap-2">
+                    {modules.map((module) => (
+                      <label
+                        key={module.id}
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0f1d32] px-3 py-2 text-sm text-slate-200"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={containerForm.moduleIds.includes(module.id)}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setContainerForm((prev) => {
+                              const nextModuleIds = checked
+                                ? [...prev.moduleIds, module.id]
+                                : prev.moduleIds.filter((id) => id !== module.id);
+                              return { ...prev, moduleIds: nextModuleIds };
+                            });
+                          }}
+                        />
+                        <span>{module.moduleName}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
