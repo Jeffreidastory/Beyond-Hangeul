@@ -203,6 +203,7 @@ export default function UserDashboardView({
   const [expandedModuleTopics, setExpandedModuleTopics] = useState({});
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [notificationsCleared, setNotificationsCleared] = useState(false);
   const [notificationPanelStyles, setNotificationPanelStyles] = useState({ left: 0, top: 0 });
   const [modulePreviewUrls, setModulePreviewUrls] = useState({});
   const [modulePreviewLoading, setModulePreviewLoading] = useState({});
@@ -234,6 +235,7 @@ export default function UserDashboardView({
   const clearNotifications = useCallback(() => {
     setNotifications([]);
     setNotificationsLoading(false);
+    setNotificationsCleared(true);
   }, []);
 
   const handleToggleNotifications = async () => {
@@ -241,6 +243,9 @@ export default function UserDashboardView({
     setNotificationsOpen(willOpen);
     if (willOpen) {
       positionNotificationPanel();
+      if (notificationsCleared) {
+        return;
+      }
       await loadNotifications(true);
       setNotifications((prevNotifications) => prevNotifications.map((item) => ({ ...item, isRead: true })));
       void markAllNotificationsReadShared(userId);
@@ -251,7 +256,9 @@ export default function UserDashboardView({
     const willOpen = !accountDrawerOpen;
     setAccountDrawerOpen(willOpen);
     if (willOpen) {
-      await loadNotifications(true);
+      if (!notificationsCleared) {
+        await loadNotifications(true);
+      }
       setNotifications((prevNotifications) => prevNotifications.map((item) => ({ ...item, isRead: true })));
       void markAllNotificationsReadShared(userId);
       setNotificationsOpen(false);
@@ -434,9 +441,11 @@ export default function UserDashboardView({
   }, []);
 
   useEffect(() => {
-    if (notificationsOpen) {
-      positionNotificationPanel();
-    }
+    if (!notificationsOpen) return undefined;
+
+    positionNotificationPanel();
+    window.addEventListener("resize", positionNotificationPanel);
+    return () => window.removeEventListener("resize", positionNotificationPanel);
   }, [notificationsOpen, positionNotificationPanel]);
 
   const refreshLearningData = useCallback(async () => {
@@ -2217,6 +2226,7 @@ export default function UserDashboardView({
 
             <div className="relative hidden sm:block">
               <button
+                ref={notificationButtonRef}
                 type="button"
                 onClick={handleToggleNotifications}
                 className={`relative rounded-full border p-2 ${isLight ? "border-slate-200 bg-slate-100" : "border-white/10 bg-white/5"}`}
