@@ -26,6 +26,7 @@ import {
   Search,
   Sun,
   X,
+  ChevronUp,
 } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import { PAYMENT_STATUS } from "@/types/dashboardModels";
@@ -199,6 +200,7 @@ export default function UserDashboardView({
   );
   const [openModulePreviews, setOpenModulePreviews] = useState({});
   const [expandedModuleTopics, setExpandedModuleTopics] = useState({});
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [modulePreviewUrls, setModulePreviewUrls] = useState({});
   const [modulePreviewLoading, setModulePreviewLoading] = useState({});
   const [calendarMatrix, setCalendarMatrix] = useState(null);
@@ -391,6 +393,21 @@ export default function UserDashboardView({
     },
     [expandedModuleTopics, isLight],
   );
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentY = window.scrollY || window.pageYOffset;
+      const nextVisible = currentY > 300 && activeTab === "modules";
+      setShowScrollTop(nextVisible);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [activeTab]);
 
   const refreshLearningData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
@@ -1594,6 +1611,7 @@ export default function UserDashboardView({
     if (activeTab === "modules") {
       return (
         <main
+          id="user-modules-section"
           className={`space-y-5 rounded-2xl p-5 lg:p-6 ${isLight ? "bg-white" : "bg-[#0f1d32]"}`}
         >
           <section
@@ -2503,6 +2521,25 @@ export default function UserDashboardView({
           </div>
         </nav>
       </div>
+
+      {activeTab === "modules" ? (
+        <button
+          type="button"
+          onClick={() => {
+            const target = document.getElementById("user-modules-section");
+            if (target) {
+              target.scrollIntoView({ behavior: "smooth", block: "start" });
+            } else {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }
+          }}
+          className={`fixed right-4 z-50 rounded-full p-3 shadow-xl transition duration-300 focus:outline-none focus:ring-2 focus:ring-amber-300 ${showScrollTop ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0 pointer-events-none"} ${isLight ? "bg-white text-slate-900 hover:bg-slate-100" : "bg-slate-900 text-white hover:bg-slate-800"} lg:right-8 lg:bottom-8 bottom-24`}
+          style={{ boxShadow: "0 20px 50px rgba(15, 23, 42, 0.2)" }}
+          aria-label="Scroll to top"
+        >
+          <ChevronUp size={20} />
+        </button>
+      ) : null}
     </section>
   );
 }
