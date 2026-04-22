@@ -2,6 +2,7 @@ import {
   MODULE_ACCESS,
   MODULE_STATUS,
   MODULE_TYPE,
+  WORKSHEET_KIND,
   PATH_STATUS,
   PATH_STEP_TYPE,
   PAYMENT_STATUS,
@@ -57,6 +58,7 @@ const buildSeedData = () => ({
   pathItems: [],
   learningPaths: [],
   worksheets: [],
+  printableWorksheets: [],
   resourceFiles: [],
   resourceNotes: [],
   resourceBookmarks: [],
@@ -197,6 +199,7 @@ function getStore() {
       pathItems: existing.pathItems || [],
       learningPaths: existing.learningPaths || [],
       worksheets: existing.worksheets || [],
+      printableWorksheets: existing.printableWorksheets || [],
       resourceFiles: existing.resourceFiles || [],
       resourceNotes: existing.resourceNotes || [],
       resourceBookmarks: existing.resourceBookmarks || [],
@@ -228,8 +231,9 @@ function getStore() {
     }
 
     syncPathItemsFromLearningPaths(normalizedStore);
+    const splitStore = splitWorksheetCollections(normalizedStore);
 
-    const migratedStore = migrateBlobFieldsToRuntime(normalizedStore);
+    const migratedStore = migrateBlobFieldsToRuntime(splitStore);
     saveStore(migratedStore);
     return hydrateBlobFields(migratedStore);
   }
@@ -717,16 +721,44 @@ function parseWorksheetContentRows(content = "") {
     .filter((row) => row.number && row.korean);
 }
 
-function normalizeWorksheet(worksheet) {
+function resolveWorksheetKind(worksheet) {
+  const explicitKind =
+    worksheet?.worksheetKind || worksheet?.worksheet_type || worksheet?.worksheetType;
+  if (explicitKind === WORKSHEET_KIND.PRINTABLE) {
+    return WORKSHEET_KIND.PRINTABLE;
+  }
+  if (explicitKind === WORKSHEET_KIND.ONLINE) {
+    return WORKSHEET_KIND.ONLINE;
+  }
+
   const normalizedEntries = normalizeWorksheetEntries(worksheet?.entries || []);
   const legacyEntries = parseWorksheetContentRows(worksheet?.content || "");
-  const entries = normalizedEntries.length ? normalizedEntries : legacyEntries;
+  const hasInteractiveRows = normalizedEntries.length > 0 || legacyEntries.length > 0;
+  if (hasInteractiveRows) {
+    return WORKSHEET_KIND.ONLINE;
+  }
+
+  const hasFile = Boolean(worksheet?.resourceFileData || worksheet?.resourceFileName);
+  return hasFile ? WORKSHEET_KIND.PRINTABLE : WORKSHEET_KIND.ONLINE;
+}
+
+function normalizeWorksheet(worksheet, forcedKind = null) {
+  const normalizedEntries = normalizeWorksheetEntries(worksheet?.entries || []);
+  const legacyEntries = parseWorksheetContentRows(worksheet?.content || "");
+  const worksheetKind = forcedKind || resolveWorksheetKind(worksheet);
+  const entries =
+    worksheetKind === WORKSHEET_KIND.ONLINE
+      ? normalizedEntries.length
+        ? normalizedEntries
+        : legacyEntries
+      : [];
   const accessType = worksheet?.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE;
 
   return {
     ...worksheet,
     title: String(worksheet?.title || "Untitled Worksheet"),
-    type: "writing-quiz",
+    type: worksheetKind === WORKSHEET_KIND.PRINTABLE ? "printable-file" : "writing-quiz",
+    worksheetKind,
     accessType,
     resourceFileName: String(worksheet?.resourceFileName || ""),
     resourceFileData: String(worksheet?.resourceFileData || ""),
@@ -737,8 +769,61 @@ function normalizeWorksheet(worksheet) {
   };
 }
 
+function splitWorksheetCollections(store) {
+  const combined = [
+    ...(store.worksheets || []),
+    ...(store.printableWorksheets || []),
+  ];
+
+  const seen = new Set();
+  const online = [];
+  const printable = [];
+
+  combined.forEach((worksheet) => {
+    const normalized = normalizeWorksheet(worksheet);
+    const worksheetId = normalized.id || randomId("worksheet");
+    if (seen.has(worksheetId)) return;
+    seen.add(worksheetId);
+
+    const baseRow = {
+      ...normalized,
+      id: worksheetId,
+      createdAt: normalized.createdAt || new Date().toISOString(),
+    };
+
+    if (baseRow.worksheetKind === WORKSHEET_KIND.PRINTABLE) {
+      printable.push({
+        ...baseRow,
+        entries: [],
+      });
+      return;
+    }
+
+    online.push({
+      ...baseRow,
+      resourceFileName: String(baseRow.resourceFileName || ""),
+      resourceFileData: String(baseRow.resourceFileData || ""),
+      resourceFileType: String(baseRow.resourceFileType || ""),
+    });
+  });
+
+  return {
+    ...store,
+    worksheets: online,
+    printableWorksheets: printable,
+  };
+}
+
 export function listWorksheets() {
-  return (getStore().worksheets || []).map(normalizeWorksheet);
+  return (getStore().worksheets || [])
+    .map((worksheet) => normalizeWorksheet(worksheet, WORKSHEET_KIND.ONLINE))
+    .filter((worksheet) => worksheet.worksheetKind === WORKSHEET_KIND.ONLINE);
+}
+
+export function listPrintableWorksheets() {
+  return (getStore().printableWorksheets || [])
+    .map((worksheet) => normalizeWorksheet(worksheet, WORKSHEET_KIND.PRINTABLE))
+    .filter((worksheet) => worksheet.worksheetKind === WORKSHEET_KIND.PRINTABLE);
 }
 
 export function createWorksheet(payload) {
@@ -748,41 +833,59 @@ export function createWorksheet(payload) {
     id: randomId("worksheet"),
     title: payload.title,
     type: "writing-quiz",
+    worksheetKind: WORKSHEET_KIND.ONLINE,
     accessType: payload.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-    resourceFileName: String(payload.resourceFileName || ""),
-    resourceFileData: String(payload.resourceFileData || ""),
-    resourceFileType: String(payload.resourceFileType || ""),
+    resourceFileName: "",
+    resourceFileData: "",
+    resourceFileType: "",
     entries: normalizedEntries,
     description: payload.description || "",
     content: "",
     createdAt: new Date().toISOString(),
   };
 
-  store.worksheets = [nextSheet, ...store.worksheets];
+  store.worksheets = [nextSheet, ...(store.worksheets || [])];
   saveStore(store);
-  return normalizeWorksheet(nextSheet);
+  return normalizeWorksheet(nextSheet, WORKSHEET_KIND.ONLINE);
+}
+
+export function createPrintableWorksheet(payload) {
+  const store = getStore();
+  const nextSheet = {
+    id: randomId("printable-worksheet"),
+    title: payload.title,
+    type: "printable-file",
+    worksheetKind: WORKSHEET_KIND.PRINTABLE,
+    accessType: payload.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
+    resourceFileName: String(payload.resourceFileName || ""),
+    resourceFileData: String(payload.resourceFileData || ""),
+    resourceFileType: String(payload.resourceFileType || ""),
+    entries: [],
+    description: String(payload.description || ""),
+    content: "",
+    createdAt: new Date().toISOString(),
+  };
+
+  store.printableWorksheets = [nextSheet, ...(store.printableWorksheets || [])];
+  saveStore(store);
+  return normalizeWorksheet(nextSheet, WORKSHEET_KIND.PRINTABLE);
 }
 
 export function updateWorksheet(worksheetId, patch) {
   const store = getStore();
-  store.worksheets = store.worksheets.map((worksheet) =>
+  store.worksheets = (store.worksheets || []).map((worksheet) =>
     worksheet.id === worksheetId
       ? {
           ...worksheet,
           ...patch,
           type: "writing-quiz",
+          worksheetKind: WORKSHEET_KIND.ONLINE,
           accessType: patch.accessType !== undefined
             ? (patch.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE)
             : (worksheet.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE),
-          resourceFileName: patch.resourceFileName !== undefined
-            ? String(patch.resourceFileName || "")
-            : String(worksheet.resourceFileName || ""),
-          resourceFileData: patch.resourceFileData !== undefined
-            ? String(patch.resourceFileData || "")
-            : String(worksheet.resourceFileData || ""),
-          resourceFileType: patch.resourceFileType !== undefined
-            ? String(patch.resourceFileType || "")
-            : String(worksheet.resourceFileType || ""),
+          resourceFileName: "",
+          resourceFileData: "",
+          resourceFileType: "",
           entries:
             patch.entries !== undefined
               ? normalizeWorksheetEntries(patch.entries)
@@ -794,9 +897,58 @@ export function updateWorksheet(worksheetId, patch) {
   saveStore(store);
 }
 
+export function updatePrintableWorksheet(worksheetId, patch) {
+  const store = getStore();
+  store.printableWorksheets = (store.printableWorksheets || []).map((worksheet) =>
+    worksheet.id === worksheetId
+      ? {
+          ...worksheet,
+          ...patch,
+          type: "printable-file",
+          worksheetKind: WORKSHEET_KIND.PRINTABLE,
+          accessType:
+            patch.accessType !== undefined
+              ? patch.accessType === MODULE_TYPE.PAID
+                ? MODULE_TYPE.PAID
+                : MODULE_TYPE.FREE
+              : worksheet.accessType === MODULE_TYPE.PAID
+                ? MODULE_TYPE.PAID
+                : MODULE_TYPE.FREE,
+          resourceFileName:
+            patch.resourceFileName !== undefined
+              ? String(patch.resourceFileName || "")
+              : String(worksheet.resourceFileName || ""),
+          resourceFileData:
+            patch.resourceFileData !== undefined
+              ? String(patch.resourceFileData || "")
+              : String(worksheet.resourceFileData || ""),
+          resourceFileType:
+            patch.resourceFileType !== undefined
+              ? String(patch.resourceFileType || "")
+              : String(worksheet.resourceFileType || ""),
+          description:
+            patch.description !== undefined
+              ? String(patch.description || "")
+              : String(worksheet.description || ""),
+          entries: [],
+          content: "",
+        }
+      : worksheet
+  );
+  saveStore(store);
+}
+
 export function deleteWorksheet(worksheetId) {
   const store = getStore();
-  store.worksheets = store.worksheets.filter((worksheet) => worksheet.id !== worksheetId);
+  store.worksheets = (store.worksheets || []).filter((worksheet) => worksheet.id !== worksheetId);
+  saveStore(store);
+}
+
+export function deletePrintableWorksheet(worksheetId) {
+  const store = getStore();
+  store.printableWorksheets = (store.printableWorksheets || []).filter(
+    (worksheet) => worksheet.id !== worksheetId,
+  );
   saveStore(store);
 }
 
@@ -996,7 +1148,8 @@ export function getUserLearningData(userId) {
     pathItems: store.pathItems,
     activeLearningPath,
     learningPaths: store.learningPaths || [],
-    worksheets: store.worksheets,
+    worksheets: listWorksheets(),
+    printableWorksheets: listPrintableWorksheets(),
     payments: store.payments.filter((payment) => payment.userId === userId),
     moduleProgress,
     worksheetScores,
@@ -1294,6 +1447,11 @@ function mapWorksheetRowToModel(row) {
   return normalizeWorksheet({
     id: row.id,
     title: row.title || "Untitled Worksheet",
+    worksheetKind:
+      row.worksheet_kind ||
+      row.worksheet_type ||
+      row.worksheetType ||
+      null,
     accessType: row.access_type || MODULE_TYPE.FREE,
     resourceFileName: row.resource_file_name || "",
     resourceFileData: row.resource_file_data || "",
@@ -1429,6 +1587,7 @@ const adminCache = {
   modules: null,
   containers: null,
   worksheets: null,
+  printableWorksheets: null,
   payments: null,
   users: null,
 };
@@ -1440,6 +1599,7 @@ export function getAdminCacheSnapshot() {
     modules: adminCache.modules,
     containers: adminCache.containers,
     worksheets: adminCache.worksheets,
+    printableWorksheets: adminCache.printableWorksheets,
     payments: adminCache.payments,
     users: adminCache.users,
   };
@@ -1508,22 +1668,87 @@ export async function listModulesShared({ forceReload = false } = {}) {
   }
 }
 
+function splitWorksheetKinds(rows) {
+  const online = [];
+  const printable = [];
+
+  (rows || []).forEach((worksheet) => {
+    if (worksheet.worksheetKind === WORKSHEET_KIND.PRINTABLE) {
+      printable.push(worksheet);
+      return;
+    }
+    online.push(worksheet);
+  });
+
+  return { online, printable };
+}
+
+async function fetchLearningWorksheetsRows() {
+  const supabase = getSupabaseBrowserClient();
+
+  const withKindQuery = await supabase
+    .from("learning_worksheets")
+    .select(
+      "id, title, worksheet_kind, access_type, resource_file_name, resource_file_data, resource_file_type, entries, description, created_at, updated_at"
+    )
+    .order("created_at", { ascending: false });
+
+  if (!withKindQuery.error) {
+    return {
+      rows: (withKindQuery.data || []).map(mapWorksheetRowToModel),
+      supportsKindField: true,
+    };
+  }
+
+  if (
+    !String(withKindQuery.error?.message || "")
+      .toLowerCase()
+      .includes("worksheet_kind")
+  ) {
+    throw withKindQuery.error;
+  }
+
+  const legacyQuery = await supabase
+    .from("learning_worksheets")
+    .select(
+      "id, title, access_type, resource_file_name, resource_file_data, resource_file_type, entries, description, created_at, updated_at"
+    )
+    .order("created_at", { ascending: false });
+
+  if (legacyQuery.error) throw legacyQuery.error;
+  return {
+    rows: (legacyQuery.data || []).map(mapWorksheetRowToModel),
+    supportsKindField: false,
+  };
+}
+
 export async function listWorksheetsShared({ forceReload = false } = {}) {
-  if (!forceReload && adminCache.worksheets) {
+  if (!forceReload && adminCache.worksheets && adminCache.printableWorksheets) {
     return adminCache.worksheets;
   }
 
   try {
-    const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase
-      .from("learning_worksheets")
-      .select("id, title, access_type, resource_file_name, resource_file_data, resource_file_type, entries, description, created_at, updated_at")
-      .order("created_at", { ascending: false });
+    const { rows } = await fetchLearningWorksheetsRows();
+    const split = splitWorksheetKinds(rows);
+    adminCache.worksheets = split.online;
+    adminCache.printableWorksheets = split.printable;
+    return split.online;
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
 
-    if (error) throw error;
-    const rows = (data || []).map(mapWorksheetRowToModel);
-    adminCache.worksheets = rows;
-    return rows;
+export async function listPrintableWorksheetsShared({ forceReload = false } = {}) {
+  if (!forceReload && adminCache.printableWorksheets && adminCache.worksheets) {
+    return adminCache.printableWorksheets;
+  }
+
+  try {
+    const { rows } = await fetchLearningWorksheetsRows();
+    const split = splitWorksheetKinds(rows);
+    adminCache.worksheets = split.online;
+    adminCache.printableWorksheets = split.printable;
+    return split.printable;
   } catch (error) {
     throw normalizeError(error);
   }
@@ -1563,25 +1788,51 @@ async function broadcastNotificationForAllUsers(notification) {
 export async function createWorksheetShared(payload) {
   try {
     const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase
+    const basePayload = {
+      title: payload.title || "Untitled Worksheet",
+      access_type:
+        payload.accessType === MODULE_TYPE.PAID
+          ? MODULE_TYPE.PAID
+          : MODULE_TYPE.FREE,
+      resource_file_name: "",
+      resource_file_data: "",
+      resource_file_type: "",
+      entries: normalizeWorksheetEntries(payload.entries || []),
+      description: String(payload.description || ""),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let insertPayload = {
+      ...basePayload,
+      worksheet_kind: WORKSHEET_KIND.ONLINE,
+    };
+
+    let query = await supabase
       .from("learning_worksheets")
-      .insert({
-        title: payload.title || "Untitled Worksheet",
-        access_type: payload.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-        resource_file_name: String(payload.resourceFileName || ""),
-        resource_file_data: String(payload.resourceFileData || ""),
-        resource_file_type: String(payload.resourceFileType || ""),
-        entries: normalizeWorksheetEntries(payload.entries || []),
-        description: String(payload.description || ""),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select("id, title, access_type, resource_file_name, resource_file_data, resource_file_type, entries, description, created_at, updated_at")
+      .insert(insertPayload)
+      .select(
+        "id, title, worksheet_kind, access_type, resource_file_name, resource_file_data, resource_file_type, entries, description, created_at, updated_at"
+      )
       .single();
 
-    if (error) throw error;
+    if (
+      query.error &&
+      String(query.error?.message || "").toLowerCase().includes("worksheet_kind")
+    ) {
+      insertPayload = { ...basePayload };
+      query = await supabase
+        .from("learning_worksheets")
+        .insert(insertPayload)
+        .select(
+          "id, title, access_type, resource_file_name, resource_file_data, resource_file_type, entries, description, created_at, updated_at"
+        )
+        .single();
+    }
 
-    const worksheet = mapWorksheetRowToModel(data);
+    if (query.error) throw query.error;
+
+    const worksheet = mapWorksheetRowToModel(query.data);
     await broadcastNotificationForAllUsers({
       type: "worksheet_added",
       title: "New worksheet available",
@@ -1591,7 +1842,9 @@ export async function createWorksheetShared(payload) {
 
     return worksheet;
   } catch {
-    return createWorksheet(payload);
+    const worksheet = createWorksheet(payload);
+    invalidateAdminCache(["worksheets", "printableWorksheets"]);
+    return worksheet;
   }
 }
 
@@ -1606,21 +1859,40 @@ export async function updateWorksheetShared(worksheetId, patch) {
 
     const nextPatch = {
       updated_at: new Date().toISOString(),
+      resource_file_name: "",
+      resource_file_data: "",
+      resource_file_type: "",
     };
 
     if (patch.title !== undefined) nextPatch.title = patch.title;
     if (patch.accessType !== undefined) nextPatch.access_type = patch.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE;
-    if (patch.resourceFileName !== undefined) nextPatch.resource_file_name = String(patch.resourceFileName || "");
-    if (patch.resourceFileData !== undefined) nextPatch.resource_file_data = String(patch.resourceFileData || "");
-    if (patch.resourceFileType !== undefined) nextPatch.resource_file_type = String(patch.resourceFileType || "");
     if (patch.entries !== undefined) nextPatch.entries = normalizeWorksheetEntries(patch.entries || []);
     if (patch.description !== undefined) nextPatch.description = String(patch.description || "");
+    nextPatch.worksheet_kind = WORKSHEET_KIND.ONLINE;
 
-    const { error } = await supabase.from("learning_worksheets").update(nextPatch).eq("id", worksheetId);
-    if (error) throw error;
+    let updateResult = await supabase
+      .from("learning_worksheets")
+      .update(nextPatch)
+      .eq("id", worksheetId);
+
+    if (
+      updateResult.error &&
+      String(updateResult.error?.message || "")
+        .toLowerCase()
+        .includes("worksheet_kind")
+    ) {
+      const fallbackPatch = { ...nextPatch };
+      delete fallbackPatch.worksheet_kind;
+      updateResult = await supabase
+        .from("learning_worksheets")
+        .update(fallbackPatch)
+        .eq("id", worksheetId);
+    }
+
+    if (updateResult.error) throw updateResult.error;
 
     const worksheetTitle = patch.title || currentWorksheet?.title || "Worksheet";
-    if (patch.title !== undefined || patch.resourceFileName !== undefined || patch.resourceFileData !== undefined || patch.resourceFileType !== undefined || patch.entries !== undefined || patch.description !== undefined) {
+    if (patch.title !== undefined || patch.entries !== undefined || patch.description !== undefined) {
       await broadcastNotificationForAllUsers({
         type: "worksheet_updated",
         title: "Worksheet updated",
@@ -1630,6 +1902,7 @@ export async function updateWorksheetShared(worksheetId, patch) {
     }
   } catch {
     updateWorksheet(worksheetId, patch);
+    invalidateAdminCache(["worksheets", "printableWorksheets"]);
   }
 }
 
@@ -1641,6 +1914,134 @@ export async function deleteWorksheetShared(worksheetId) {
   } catch {
     deleteWorksheet(worksheetId);
   }
+  invalidateAdminCache(["worksheets", "printableWorksheets"]);
+}
+
+export async function createPrintableWorksheetShared(payload) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const basePayload = {
+      title: payload.title || "Untitled Printable Worksheet",
+      access_type:
+        payload.accessType === MODULE_TYPE.PAID
+          ? MODULE_TYPE.PAID
+          : MODULE_TYPE.FREE,
+      resource_file_name: String(payload.resourceFileName || ""),
+      resource_file_data: String(payload.resourceFileData || ""),
+      resource_file_type: String(payload.resourceFileType || ""),
+      entries: [],
+      description: String(payload.description || ""),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let insertPayload = {
+      ...basePayload,
+      worksheet_kind: WORKSHEET_KIND.PRINTABLE,
+    };
+
+    let query = await supabase
+      .from("learning_worksheets")
+      .insert(insertPayload)
+      .select(
+        "id, title, worksheet_kind, access_type, resource_file_name, resource_file_data, resource_file_type, entries, description, created_at, updated_at"
+      )
+      .single();
+
+    if (
+      query.error &&
+      String(query.error?.message || "").toLowerCase().includes("worksheet_kind")
+    ) {
+      insertPayload = { ...basePayload };
+      query = await supabase
+        .from("learning_worksheets")
+        .insert(insertPayload)
+        .select(
+          "id, title, access_type, resource_file_name, resource_file_data, resource_file_type, entries, description, created_at, updated_at"
+        )
+        .single();
+    }
+
+    if (query.error) throw query.error;
+    const worksheet = mapWorksheetRowToModel({
+      ...query.data,
+      worksheet_kind: query.data?.worksheet_kind || WORKSHEET_KIND.PRINTABLE,
+      entries: [],
+    });
+    invalidateAdminCache(["worksheets", "printableWorksheets"]);
+    return worksheet;
+  } catch {
+    const worksheet = createPrintableWorksheet(payload);
+    invalidateAdminCache(["worksheets", "printableWorksheets"]);
+    return worksheet;
+  }
+}
+
+export async function updatePrintableWorksheetShared(worksheetId, patch) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const nextPatch = {
+      updated_at: new Date().toISOString(),
+      entries: [],
+      worksheet_kind: WORKSHEET_KIND.PRINTABLE,
+    };
+
+    if (patch.title !== undefined) nextPatch.title = patch.title;
+    if (patch.accessType !== undefined) {
+      nextPatch.access_type =
+        patch.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE;
+    }
+    if (patch.resourceFileName !== undefined) {
+      nextPatch.resource_file_name = String(patch.resourceFileName || "");
+    }
+    if (patch.resourceFileData !== undefined) {
+      nextPatch.resource_file_data = String(patch.resourceFileData || "");
+    }
+    if (patch.resourceFileType !== undefined) {
+      nextPatch.resource_file_type = String(patch.resourceFileType || "");
+    }
+    if (patch.description !== undefined) {
+      nextPatch.description = String(patch.description || "");
+    }
+
+    let updateResult = await supabase
+      .from("learning_worksheets")
+      .update(nextPatch)
+      .eq("id", worksheetId);
+
+    if (
+      updateResult.error &&
+      String(updateResult.error?.message || "")
+        .toLowerCase()
+        .includes("worksheet_kind")
+    ) {
+      const fallbackPatch = { ...nextPatch };
+      delete fallbackPatch.worksheet_kind;
+      updateResult = await supabase
+        .from("learning_worksheets")
+        .update(fallbackPatch)
+        .eq("id", worksheetId);
+    }
+
+    if (updateResult.error) throw updateResult.error;
+  } catch {
+    updatePrintableWorksheet(worksheetId, patch);
+  }
+  invalidateAdminCache(["worksheets", "printableWorksheets"]);
+}
+
+export async function deletePrintableWorksheetShared(worksheetId) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase
+      .from("learning_worksheets")
+      .delete()
+      .eq("id", worksheetId);
+    if (error) throw error;
+  } catch {
+    deletePrintableWorksheet(worksheetId);
+  }
+  invalidateAdminCache(["worksheets", "printableWorksheets"]);
 }
 
 export async function migrateLocalWorksheetsToShared() {
@@ -2421,7 +2822,14 @@ export async function getUserLearningDataShared(userId) {
         .order("created_at", { ascending: true });
     }
 
-    const [accessResult, paymentsResult, sharedPaths, sharedWorksheets, containersResult] = await Promise.all([
+    const [
+      accessResult,
+      paymentsResult,
+      sharedPaths,
+      sharedWorksheets,
+      sharedPrintableWorksheets,
+      containersResult,
+    ] = await Promise.all([
       supabase
         .from("user_module_access")
         .select("id, user_id, module_id, status, granted_at")
@@ -2433,6 +2841,7 @@ export async function getUserLearningDataShared(userId) {
         .order("submitted_at", { ascending: false }),
       listLearningPathsShared(),
       listWorksheetsShared(),
+      listPrintableWorksheetsShared(),
       listContainersShared(),
     ]);
 
@@ -2544,6 +2953,7 @@ export async function getUserLearningDataShared(userId) {
       activeLearningPath,
       learningPaths: sharedPaths,
       worksheets: sharedWorksheets,
+      printableWorksheets: sharedPrintableWorksheets,
       payments,
       moduleProgress,
       worksheetScores,

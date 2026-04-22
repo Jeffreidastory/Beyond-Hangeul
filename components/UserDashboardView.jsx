@@ -219,6 +219,7 @@ export default function UserDashboardView({
       pathItems: [],
       activeLearningPath: null,
       worksheets: [],
+      printableWorksheets: [],
       payments: [],
       containers: [],
     },
@@ -1084,12 +1085,11 @@ export default function UserDashboardView({
 
   const printableWorksheets = useMemo(
     () =>
-      sortedWorksheets.filter(
-        (worksheet) =>
-          Boolean(worksheet.resourceFileData) ||
-          Boolean(worksheet.resourceFileName),
+      [...(learningData.printableWorksheets || [])].sort(
+        (a, b) =>
+          new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
       ),
-    [sortedWorksheets],
+    [learningData.printableWorksheets],
   );
 
   const moduleGroups = useMemo(() => {
@@ -2005,33 +2005,6 @@ export default function UserDashboardView({
                     >
                       Quiz
                     </button>
-                    {selectedWorksheet.resourceFileData ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void handleOpenWorksheetFile(selectedWorksheet, {
-                            download: true,
-                          })
-                        }
-                        title="Download Worksheet"
-                        className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${isLight ? "border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200" : "border-white/10 bg-[#0f1d32] text-slate-200 hover:bg-white/5"}`}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-5 w-5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                          <polyline points="7 10 12 15 17 10" />
-                          <line x1="12" y1="15" x2="12" y2="3" />
-                        </svg>
-                      </button>
-                    ) : null}
                   </div>
                 </div>
               ) : null}

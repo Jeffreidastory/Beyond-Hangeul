@@ -13,6 +13,11 @@ export const MODULE_STATUS = {
   DRAFT: "draft",
 };
 
+export const WORKSHEET_KIND = {
+  ONLINE: "online",
+  PRINTABLE: "printable",
+};
+
 export const PATH_STATUS = {
   ACTIVE: "active",
   DRAFT: "draft",

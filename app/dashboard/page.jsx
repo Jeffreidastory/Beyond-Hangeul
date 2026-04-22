@@ -134,6 +134,7 @@ async function loadInitialLearningData(userId) {
     modules: modulesWithAccess,
     containers,
     worksheets: [],
+    printableWorksheets: [],
     payments,
     moduleProgress,
     worksheetScores,

@@ -16,20 +16,24 @@ import {
   approvePaymentAndGrantAccessShared,
   createContainerShared,
   createModuleShared,
+  createPrintableWorksheetShared,
   createWorksheetShared,
   deleteContainerShared,
   deleteModuleShared,
+  deletePrintableWorksheetShared,
   deleteWorksheetShared,
   getAdminCacheSnapshot,
   invalidateAdminCache,
   listContainersShared,
   listModulesShared,
   listPaymentsShared,
+  listPrintableWorksheetsShared,
   listWorksheetsShared,
   listUsersWithStatusShared,
   syncUsers,
   updateContainerShared,
   updateModuleShared,
+  updatePrintableWorksheetShared,
   updateWorksheetShared,
 } from "@/services/dashboardDataService";
 import SummaryCard from "@/components/admin/cards/SummaryCard";
@@ -73,6 +77,15 @@ const defaultWorksheet = {
   resourceFileData: "",
   resourceFileType: "",
   entries: createWorksheetRows(5),
+};
+
+const defaultPrintableWorksheet = {
+  title: "",
+  description: "",
+  accessType: MODULE_TYPE.FREE,
+  resourceFileName: "",
+  resourceFileData: "",
+  resourceFileType: "",
 };
 
 const SECTION_ROUTES = {
@@ -129,20 +142,30 @@ export default function AdminWorkspace({
   const [activeSection, setActiveSection] = useState(initialSection);
   const [modules, setModules] = useState([]);
   const [worksheets, setWorksheets] = useState([]);
+  const [printableWorksheets, setPrintableWorksheets] = useState([]);
   const [users, setUsers] = useState(initialUsers || []);
   const [paymentRequests, setPaymentRequests] = useState([]);
 
   const [moduleForm, setModuleForm] = useState(defaultModule);
   const [worksheetForm, setWorksheetForm] = useState(defaultWorksheet);
+  const [printableWorksheetForm, setPrintableWorksheetForm] = useState(
+    defaultPrintableWorksheet,
+  );
   const [editingModule, setEditingModule] = useState(null);
   const [editingModuleLoadingId, setEditingModuleLoadingId] = useState(null);
   const [editingWorksheetId, setEditingWorksheetId] = useState("");
+  const [editingPrintableWorksheetId, setEditingPrintableWorksheetId] =
+    useState("");
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [selectedUserAccount, setSelectedUserAccount] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [isCreateModuleModalOpen, setIsCreateModuleModalOpen] = useState(false);
   const [isWorksheetModalOpen, setIsWorksheetModalOpen] = useState(false);
+  const [isPrintableWorksheetModalOpen, setIsPrintableWorksheetModalOpen] =
+    useState(false);
   const [isSavingWorksheet, setIsSavingWorksheet] = useState(false);
+  const [isSavingPrintableWorksheet, setIsSavingPrintableWorksheet] =
+    useState(false);
   const [previewModule, setPreviewModule] = useState(null);
   const [moduleFilterTab, setModuleFilterTab] = useState("all");
   const [isLoadingAdminData, setIsLoadingAdminData] = useState(true);
@@ -172,7 +195,8 @@ export default function AdminWorkspace({
   const [autoReactivateAfterEdit, setAutoReactivateAfterEdit] = useState(true);
   const [isCreateFileUploading, setIsCreateFileUploading] = useState(false);
   const [isEditFileUploading, setIsEditFileUploading] = useState(false);
-  const [isWorksheetFileUploading, setIsWorksheetFileUploading] = useState(false);
+  const [isPrintableFileUploading, setIsPrintableFileUploading] =
+    useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [userFilterTab, setUserFilterTab] = useState("all");
   const [userSearch, setUserSearch] = useState("");
@@ -205,8 +229,11 @@ export default function AdminWorkspace({
         sectionKeys = ["modules", "worksheets"];
         break;
       case "worksheets":
-        fetchPromises = [listWorksheetsShared({ forceReload })];
-        sectionKeys = ["worksheets"];
+        fetchPromises = [
+          listWorksheetsShared({ forceReload }),
+          listPrintableWorksheetsShared({ forceReload }),
+        ];
+        sectionKeys = ["worksheets", "printableWorksheets"];
         break;
       case "users":
         fetchPromises = [listUsersWithStatusShared(initialUsers, { forceReload })];
@@ -228,10 +255,18 @@ export default function AdminWorkspace({
           listModulesShared({ forceReload }),
           listUsersWithStatusShared(initialUsers, { forceReload }),
           listWorksheetsShared({ forceReload }),
+          listPrintableWorksheetsShared({ forceReload }),
           listContainersShared({ forceReload }),
           listPaymentsShared({ forceReload }),
         ];
-        sectionKeys = ["modules", "users", "worksheets", "containers", "payments"];
+        sectionKeys = [
+          "modules",
+          "users",
+          "worksheets",
+          "printableWorksheets",
+          "containers",
+          "payments",
+        ];
         break;
     }
 
@@ -262,6 +297,7 @@ export default function AdminWorkspace({
     applyRefresh("modules", setModules);
     applyRefresh("users", setUsers);
     applyRefresh("worksheets", setWorksheets);
+    applyRefresh("printableWorksheets", setPrintableWorksheets);
     applyRefresh("containers", setContainers);
     applyRefresh("payments", setPaymentRequests);
 
@@ -379,10 +415,18 @@ export default function AdminWorkspace({
 
   useEffect(() => {
     const cached = getAdminCacheSnapshot();
-    if (cached.modules || cached.containers || cached.worksheets || cached.payments || cached.users) {
+    if (
+      cached.modules ||
+      cached.containers ||
+      cached.worksheets ||
+      cached.printableWorksheets ||
+      cached.payments ||
+      cached.users
+    ) {
       if (cached.modules) setModules(cached.modules);
       if (cached.containers) setContainers(cached.containers);
       if (cached.worksheets) setWorksheets(cached.worksheets);
+      if (cached.printableWorksheets) setPrintableWorksheets(cached.printableWorksheets);
       if (cached.payments) setPaymentRequests(cached.payments);
       if (cached.users) setUsers(cached.users);
     }
@@ -1054,14 +1098,17 @@ export default function AdminWorkspace({
     setIsWorksheetModalOpen(true);
   };
 
+  const openCreatePrintableWorksheetModal = () => {
+    setEditingPrintableWorksheetId("");
+    setPrintableWorksheetForm(defaultPrintableWorksheet);
+    setIsPrintableWorksheetModalOpen(true);
+  };
+
   const beginWorksheetEdit = (worksheet) => {
     setEditingWorksheetId(worksheet.id);
     setWorksheetForm({
       title: worksheet.title,
       accessType: worksheet.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-      resourceFileName: String(worksheet.resourceFileName || ""),
-      resourceFileData: String(worksheet.resourceFileData || ""),
-      resourceFileType: String(worksheet.resourceFileType || ""),
       entries: (worksheet.entries || []).length
         ? worksheet.entries.map((entry) => ({
             number: String(entry.number || ""),
@@ -1072,22 +1119,38 @@ export default function AdminWorkspace({
     setIsWorksheetModalOpen(true);
   };
 
-  const handleWorksheetFileUpload = async (file) => {
+  const beginPrintableWorksheetEdit = (worksheet) => {
+    setEditingPrintableWorksheetId(worksheet.id);
+    setPrintableWorksheetForm({
+      title: worksheet.title || "",
+      description: worksheet.description || "",
+      accessType:
+        worksheet.accessType === MODULE_TYPE.PAID
+          ? MODULE_TYPE.PAID
+          : MODULE_TYPE.FREE,
+      resourceFileName: String(worksheet.resourceFileName || ""),
+      resourceFileData: String(worksheet.resourceFileData || ""),
+      resourceFileType: String(worksheet.resourceFileType || ""),
+    });
+    setIsPrintableWorksheetModalOpen(true);
+  };
+
+  const handlePrintableWorksheetFileUpload = async (file) => {
     if (!file) return;
-    setIsWorksheetFileUploading(true);
+    setIsPrintableFileUploading(true);
     try {
       const uploadedFileUrl = await uploadModuleFileToStorage(file);
-      setWorksheetForm((prev) => ({
+      setPrintableWorksheetForm((prev) => ({
         ...prev,
         resourceFileName: file.name,
         resourceFileType: file.type || "application/octet-stream",
         resourceFileData: String(uploadedFileUrl || ""),
       }));
-      setStatusMessage("Worksheet file uploaded to storage.");
+      setStatusMessage("Printable worksheet file uploaded to storage.");
     } catch (error) {
-      setStatusMessage(error?.message || "Unable to upload worksheet file.");
+      setStatusMessage(error?.message || "Unable to upload printable worksheet file.");
     } finally {
-      setIsWorksheetFileUploading(false);
+      setIsPrintableFileUploading(false);
     }
   };
 
@@ -1117,9 +1180,6 @@ export default function AdminWorkspace({
         await updateWorksheetShared(editingWorksheetId, {
           title: worksheetForm.title.trim(),
           accessType: worksheetForm.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-          resourceFileName: worksheetForm.resourceFileName || "",
-          resourceFileType: worksheetForm.resourceFileType || "",
-          resourceFileData: worksheetForm.resourceFileData || "",
           entries: normalizedEntries,
         });
         setStatusMessage("Worksheet updated.");
@@ -1127,15 +1187,12 @@ export default function AdminWorkspace({
         await createWorksheetShared({
           title: worksheetForm.title.trim(),
           accessType: worksheetForm.accessType === MODULE_TYPE.PAID ? MODULE_TYPE.PAID : MODULE_TYPE.FREE,
-          resourceFileName: worksheetForm.resourceFileName || "",
-          resourceFileType: worksheetForm.resourceFileType || "",
-          resourceFileData: worksheetForm.resourceFileData || "",
           entries: normalizedEntries,
         });
         setStatusMessage("Worksheet created.");
       }
 
-      invalidateAdminCache(["worksheets"]);
+      invalidateAdminCache(["worksheets", "printableWorksheets"]);
       await refreshAll(true);
       setEditingWorksheetId("");
       setWorksheetForm(defaultWorksheet);
@@ -1152,6 +1209,58 @@ export default function AdminWorkspace({
       setIsSavingWorksheet(false);
     }
     void refreshAll();
+  };
+
+  const savePrintableWorksheetFromModal = async (event) => {
+    event.preventDefault();
+    const title = String(printableWorksheetForm.title || "").trim();
+    if (!title) {
+      setStatusMessage("Printable worksheet title is required.");
+      return;
+    }
+
+    if (!printableWorksheetForm.resourceFileData) {
+      setStatusMessage("Upload a printable worksheet file before saving.");
+      return;
+    }
+
+    setIsSavingPrintableWorksheet(true);
+    try {
+      const payload = {
+        title,
+        description: printableWorksheetForm.description || "",
+        accessType:
+          printableWorksheetForm.accessType === MODULE_TYPE.PAID
+            ? MODULE_TYPE.PAID
+            : MODULE_TYPE.FREE,
+        resourceFileName: printableWorksheetForm.resourceFileName || "",
+        resourceFileType: printableWorksheetForm.resourceFileType || "",
+        resourceFileData: printableWorksheetForm.resourceFileData || "",
+      };
+
+      if (editingPrintableWorksheetId) {
+        await updatePrintableWorksheetShared(editingPrintableWorksheetId, payload);
+        setStatusMessage("Printable worksheet updated.");
+      } else {
+        await createPrintableWorksheetShared(payload);
+        setStatusMessage("Printable worksheet added.");
+      }
+
+      invalidateAdminCache(["worksheets", "printableWorksheets"]);
+      await refreshAll(true);
+      setEditingPrintableWorksheetId("");
+      setPrintableWorksheetForm(defaultPrintableWorksheet);
+      setIsPrintableWorksheetModalOpen(false);
+    } catch (error) {
+      const errorText =
+        error?.message ||
+        error?.details ||
+        error?.hint ||
+        (typeof error === "object" ? JSON.stringify(error) : String(error));
+      setStatusMessage(errorText || "Unable to save printable worksheet.");
+    } finally {
+      setIsSavingPrintableWorksheet(false);
+    }
   };
 
   const renderDashboard = () => (
@@ -1454,138 +1563,237 @@ export default function AdminWorkspace({
     <AdminPathManagement modules={modules} worksheets={worksheets} onSaved={refreshAll} />
   );
 
-  const renderWorksheets = () => (
-    <SectionCard
-      title="Worksheet Management"
-      subtitle="Manage worksheet records and create new worksheets from a modal form."
-      action={
-        <button
-          type="button"
-          onClick={openCreateWorksheetModal}
-          className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-[#0b1728] hover:bg-amber-300"
-        >
-          + Create Worksheet
-        </button>
-      }
-    >
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select
-          value={worksheetSort}
-          onChange={(event) => setWorksheetSort(event.target.value)}
-          className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm outline-none focus:border-amber-400"
-        >
-          <option value="newest">Sort: Newest</option>
-          <option value="oldest">Sort: Oldest</option>
-        </select>
+  const renderWorksheets = () => {
+    const filteredOnlineWorksheets = worksheets
+      .filter((worksheet) =>
+        worksheetFilterTab === "all"
+          ? true
+          : (worksheet.accessType || MODULE_TYPE.FREE) === worksheetFilterTab
+      )
+      .sort((left, right) => {
+        const leftDate = new Date(left.createdAt || 0).getTime();
+        const rightDate = new Date(right.createdAt || 0).getTime();
+        return worksheetSort === "oldest" ? leftDate - rightDate : rightDate - leftDate;
+      });
 
-        <div className="ml-auto flex flex-wrap gap-2">
-          {[
-            { key: "all", label: "All" },
-            { key: MODULE_TYPE.FREE, label: "Free" },
-            { key: MODULE_TYPE.PAID, label: "Premium" },
-          ].map((tab) => (
+    const sortedPrintableWorksheets = [...printableWorksheets].sort((left, right) => {
+      const leftDate = new Date(left.createdAt || 0).getTime();
+      const rightDate = new Date(right.createdAt || 0).getTime();
+      return worksheetSort === "oldest" ? leftDate - rightDate : rightDate - leftDate;
+    });
+
+    return (
+      <SectionCard
+        title="Worksheet Management"
+        subtitle="Online worksheet records and printable worksheet uploads are managed separately."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              key={tab.key}
               type="button"
-              onClick={() => setWorksheetFilterTab(tab.key)}
-              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-                worksheetFilterTab === tab.key
-                  ? "border-amber-400/80 bg-amber-500/15 text-amber-200"
-                  : "border-white/20 text-slate-300 hover:bg-white/10"
-              }`}
+              onClick={openCreateWorksheetModal}
+              className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-[#0b1728] hover:bg-amber-300"
             >
-              {tab.label}
+              + Create Worksheet
             </button>
-          ))}
-        </div>
-      </div>
+            <button
+              type="button"
+              onClick={openCreatePrintableWorksheetModal}
+              className="rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20"
+            >
+              + Add Printable WS
+            </button>
+          </div>
+        }
+      >
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <select
+            value={worksheetSort}
+            onChange={(event) => setWorksheetSort(event.target.value)}
+            className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 text-sm outline-none focus:border-amber-400"
+          >
+            <option value="newest">Sort: Newest</option>
+            <option value="oldest">Sort: Oldest</option>
+          </select>
 
-      <div className="overflow-x-auto rounded-xl border border-white/10">
-        <table className="w-full min-w-240 text-sm">
-          <thead className="bg-[#13243d] text-slate-300">
-            <tr>
-              <th className="px-3 py-2 text-left">Worksheet Title</th>
-              <th className="px-3 py-2 text-left">Access</th>
-              <th className="px-3 py-2 text-left">Rows</th>
-              <th className="px-3 py-2 text-left">Created</th>
-              <th className="px-3 py-2 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoadingAdminData ? (
-              <tr className="border-t border-white/10 bg-[#0f1d32]">
-                <td colSpan={5} className="px-3 py-8 text-center text-slate-400">
-                  Loading worksheets...
-                </td>
-              </tr>
-            ) : worksheets
-              .filter((worksheet) =>
-                worksheetFilterTab === "all"
-                  ? true
-                  : (worksheet.accessType || MODULE_TYPE.FREE) === worksheetFilterTab
-              )
-              .sort((left, right) => {
-                const leftDate = new Date(left.createdAt || 0).getTime();
-                const rightDate = new Date(right.createdAt || 0).getTime();
-                return worksheetSort === "oldest" ? leftDate - rightDate : rightDate - leftDate;
-              }).length === 0 ? (
-              <tr className="border-t border-white/10 bg-[#0f1d32]">
-                <td colSpan={5} className="px-3 py-8 text-center text-slate-400">
-                  No worksheets found for the current filter.
-                </td>
-              </tr>
-            ) : (
-              worksheets
-                .filter((worksheet) =>
-                  worksheetFilterTab === "all"
-                    ? true
-                    : (worksheet.accessType || MODULE_TYPE.FREE) === worksheetFilterTab
-                )
-                .sort((left, right) => {
-                  const leftDate = new Date(left.createdAt || 0).getTime();
-                  const rightDate = new Date(right.createdAt || 0).getTime();
-                  return worksheetSort === "oldest" ? leftDate - rightDate : rightDate - leftDate;
-                })
-                .map((worksheet) => (
-                <tr key={worksheet.id} className="border-t border-white/10 bg-[#0f1d32] align-top">
-                  <td className="px-3 py-3 font-semibold text-white">{worksheet.title}</td>
-                  <td className="px-3 py-3">
-                    <StatusBadge tone={worksheet.accessType === MODULE_TYPE.PAID ? "amber" : "green"}>
-                      {worksheet.accessType === MODULE_TYPE.PAID ? "Premium" : "Free"}
-                    </StatusBadge>
-                  </td>
-                  <td className="px-3 py-3 text-slate-300">{(worksheet.entries || []).length}</td>
-                  <td className="px-3 py-3 text-slate-300">{worksheet.createdAt ? new Date(worksheet.createdAt).toLocaleDateString() : "-"}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => beginWorksheetEdit(worksheet)}
-                        className="rounded-lg border border-slate-500 px-3 py-1.5 text-xs hover:border-amber-300"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await deleteWorksheetShared(worksheet.id);
-                          setStatusMessage("Worksheet deleted.");
-                          void refreshAll();
-                        }}
-                        className="rounded-lg border border-rose-500/50 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </SectionCard>
-  );
+          <div className="ml-auto flex flex-wrap gap-2">
+            {[
+              { key: "all", label: "All" },
+              { key: MODULE_TYPE.FREE, label: "Free" },
+              { key: MODULE_TYPE.PAID, label: "Premium" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setWorksheetFilterTab(tab.key)}
+                className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                  worksheetFilterTab === tab.key
+                    ? "border-amber-400/80 bg-amber-500/15 text-amber-200"
+                    : "border-white/20 text-slate-300 hover:bg-white/10"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-300">
+              Online Worksheets
+            </h3>
+            <div className="overflow-x-auto rounded-xl border border-white/10">
+              <table className="w-full min-w-240 text-sm">
+                <thead className="bg-[#13243d] text-slate-300">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Worksheet Title</th>
+                    <th className="px-3 py-2 text-left">Access</th>
+                    <th className="px-3 py-2 text-left">Rows</th>
+                    <th className="px-3 py-2 text-left">Created</th>
+                    <th className="px-3 py-2 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoadingAdminData ? (
+                    <tr className="border-t border-white/10 bg-[#0f1d32]">
+                      <td colSpan={5} className="px-3 py-8 text-center text-slate-400">
+                        Loading online worksheets...
+                      </td>
+                    </tr>
+                  ) : filteredOnlineWorksheets.length === 0 ? (
+                    <tr className="border-t border-white/10 bg-[#0f1d32]">
+                      <td colSpan={5} className="px-3 py-8 text-center text-slate-400">
+                        No online worksheets found for the current filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredOnlineWorksheets.map((worksheet) => (
+                      <tr key={worksheet.id} className="border-t border-white/10 bg-[#0f1d32] align-top">
+                        <td className="px-3 py-3 font-semibold text-white">{worksheet.title}</td>
+                        <td className="px-3 py-3">
+                          <StatusBadge tone={worksheet.accessType === MODULE_TYPE.PAID ? "amber" : "green"}>
+                            {worksheet.accessType === MODULE_TYPE.PAID ? "Premium" : "Free"}
+                          </StatusBadge>
+                        </td>
+                        <td className="px-3 py-3 text-slate-300">{(worksheet.entries || []).length}</td>
+                        <td className="px-3 py-3 text-slate-300">
+                          {worksheet.createdAt ? new Date(worksheet.createdAt).toLocaleDateString() : "-"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => beginWorksheetEdit(worksheet)}
+                              className="rounded-lg border border-slate-500 px-3 py-1.5 text-xs hover:border-amber-300"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await deleteWorksheetShared(worksheet.id);
+                                setStatusMessage("Worksheet deleted.");
+                                void refreshAll();
+                              }}
+                              className="rounded-lg border border-rose-500/50 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-300">
+              Printable Worksheets
+            </h3>
+            <div className="overflow-x-auto rounded-xl border border-white/10">
+              <table className="w-full min-w-240 text-sm">
+                <thead className="bg-[#13243d] text-slate-300">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Title</th>
+                    <th className="px-3 py-2 text-left">File</th>
+                    <th className="px-3 py-2 text-left">Created</th>
+                    <th className="px-3 py-2 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoadingAdminData ? (
+                    <tr className="border-t border-white/10 bg-[#0f1d32]">
+                      <td colSpan={4} className="px-3 py-8 text-center text-slate-400">
+                        Loading printable worksheets...
+                      </td>
+                    </tr>
+                  ) : sortedPrintableWorksheets.length === 0 ? (
+                    <tr className="border-t border-white/10 bg-[#0f1d32]">
+                      <td colSpan={4} className="px-3 py-8 text-center text-slate-400">
+                        No printable worksheets uploaded yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedPrintableWorksheets.map((worksheet) => (
+                      <tr key={worksheet.id} className="border-t border-white/10 bg-[#0f1d32] align-top">
+                        <td className="px-3 py-3">
+                          <p className="font-semibold text-white">{worksheet.title}</p>
+                          {worksheet.description ? (
+                            <p className="mt-1 text-xs text-slate-400">{worksheet.description}</p>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-3 text-slate-300">
+                          {worksheet.resourceFileName || "-"}
+                        </td>
+                        <td className="px-3 py-3 text-slate-300">
+                          {worksheet.createdAt ? new Date(worksheet.createdAt).toLocaleDateString() : "-"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => beginPrintableWorksheetEdit(worksheet)}
+                              className="rounded-lg border border-slate-500 px-3 py-1.5 text-xs hover:border-amber-300"
+                            >
+                              Edit
+                            </button>
+                            {worksheet.resourceFileData ? (
+                              <a
+                                href={worksheet.resourceFileData}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-lg border border-emerald-400/50 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/10"
+                              >
+                                Open
+                              </a>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await deletePrintableWorksheetShared(worksheet.id);
+                                setStatusMessage("Printable worksheet deleted.");
+                                void refreshAll();
+                              }}
+                              className="rounded-lg border border-rose-500/50 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-500/10"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+    );
+  };
 
   const renderUsers = () => (
     <SectionCard title="Users" subtitle="Manage account roles, learning access, and premium entitlement clearly.">
@@ -2152,39 +2360,6 @@ export default function AdminWorkspace({
                 </div>
               </div>
 
-              <div className="md:col-span-2 rounded-xl border border-white/20 bg-[#13243d] p-3">
-                <p className="mb-2 text-xs text-slate-400">Worksheet File (optional)</p>
-                <label className="flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/30 bg-[#0f1d32] px-3 py-2 text-sm text-slate-300 hover:border-amber-400">
-                  Upload File
-                  <input
-                    type="file"
-                    className="hidden"
-                    disabled={isWorksheetFileUploading}
-                    onChange={(event) => handleWorksheetFileUpload(event.target.files?.[0])}
-                  />
-                </label>
-                {isWorksheetFileUploading ? <p className="mt-2 text-xs text-amber-300">Attaching file...</p> : null}
-                {worksheetForm.resourceFileName ? (
-                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-[#0f1d32] px-2 py-1.5 text-xs">
-                    <span className="truncate text-emerald-300">{worksheetForm.resourceFileName}</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWorksheetForm((prev) => ({
-                          ...prev,
-                          resourceFileName: "",
-                          resourceFileType: "",
-                          resourceFileData: "",
-                        }))
-                      }
-                      className="rounded border border-rose-500/50 px-2 py-0.5 text-rose-300 hover:bg-rose-500/10"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-
               <div className="space-y-2 rounded-xl border border-white/10 bg-[#13243d] p-3 md:col-span-2">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-white">English / Korean Rows</p>
@@ -2284,6 +2459,148 @@ export default function AdminWorkspace({
                   : editingWorksheetId
                   ? "Save Worksheet"
                   : "Create Worksheet"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {isPrintableWorksheetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form
+            onSubmit={savePrintableWorksheetFromModal}
+            className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0f1d32] p-5"
+          >
+            <h3 className="text-lg font-semibold">
+              {editingPrintableWorksheetId ? "Edit Printable Worksheet" : "Add Printable Worksheet"}
+            </h3>
+
+            <div className="mt-4 grid gap-3">
+              <input
+                required
+                placeholder="Printable worksheet title"
+                value={printableWorksheetForm.title}
+                onChange={(event) =>
+                  setPrintableWorksheetForm((prev) => ({
+                    ...prev,
+                    title: event.target.value,
+                  }))
+                }
+                className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+              />
+
+              <textarea
+                rows={3}
+                placeholder="Description (optional)"
+                value={printableWorksheetForm.description}
+                onChange={(event) =>
+                  setPrintableWorksheetForm((prev) => ({
+                    ...prev,
+                    description: event.target.value,
+                  }))
+                }
+                className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2 outline-none focus:border-amber-400"
+              />
+
+              <div className="rounded-xl border border-white/20 bg-[#13243d] px-3 py-2">
+                <p className="mb-2 text-xs text-slate-400">Worksheet Access</p>
+                <div className="flex gap-4 text-sm">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="printable-access-type"
+                      checked={printableWorksheetForm.accessType === MODULE_TYPE.FREE}
+                      onChange={() =>
+                        setPrintableWorksheetForm((prev) => ({
+                          ...prev,
+                          accessType: MODULE_TYPE.FREE,
+                        }))
+                      }
+                    />
+                    Free
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="printable-access-type"
+                      checked={printableWorksheetForm.accessType === MODULE_TYPE.PAID}
+                      onChange={() =>
+                        setPrintableWorksheetForm((prev) => ({
+                          ...prev,
+                          accessType: MODULE_TYPE.PAID,
+                        }))
+                      }
+                    />
+                    Premium
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/20 bg-[#13243d] p-3">
+                <p className="mb-2 text-xs text-slate-400">Printable File (PDF preferred)</p>
+                <label className="flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/30 bg-[#0f1d32] px-3 py-2 text-sm text-slate-300 hover:border-amber-400">
+                  Upload Printable File
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                    disabled={isPrintableFileUploading}
+                    onChange={(event) =>
+                      handlePrintableWorksheetFileUpload(event.target.files?.[0])
+                    }
+                  />
+                </label>
+                {isPrintableFileUploading ? (
+                  <p className="mt-2 text-xs text-amber-300">Uploading printable file...</p>
+                ) : null}
+                {printableWorksheetForm.resourceFileName ? (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-[#0f1d32] px-2 py-1.5 text-xs">
+                    <span className="truncate text-emerald-300">
+                      {printableWorksheetForm.resourceFileName}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPrintableWorksheetForm((prev) => ({
+                          ...prev,
+                          resourceFileName: "",
+                          resourceFileType: "",
+                          resourceFileData: "",
+                        }))
+                      }
+                      className="rounded border border-rose-500/50 px-2 py-0.5 text-rose-300 hover:bg-rose-500/10"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPrintableWorksheetModalOpen(false);
+                  setEditingPrintableWorksheetId("");
+                  setPrintableWorksheetForm(defaultPrintableWorksheet);
+                }}
+                className="rounded-lg border border-slate-500 px-3 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingPrintableWorksheet}
+                className="rounded-lg bg-emerald-400 px-3 py-2 text-sm font-semibold text-[#0b1728] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingPrintableWorksheet
+                  ? editingPrintableWorksheetId
+                    ? "Saving..."
+                    : "Creating..."
+                  : editingPrintableWorksheetId
+                    ? "Save Printable WS"
+                    : "Create Printable WS"}
               </button>
             </div>
           </form>
