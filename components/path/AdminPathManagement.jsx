@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import PathHeader from "@/components/path/PathHeader";
 import PathDetailsCard from "@/components/path/PathDetailsCard";
@@ -23,13 +23,23 @@ const buildEmptyPathDraft = () => ({
   createdAt: "",
 });
 
-export default function AdminPathManagement({ modules = [], worksheets = [], onSaved }) {
+export default function AdminPathManagement({
+  modules = [],
+  worksheets = [],
+  printableWorksheets = [],
+  onSaved,
+}) {
   const [paths, setPaths] = useState([]);
   const [selectedPathId, setSelectedPathId] = useState("");
   const [draft, setDraft] = useState(buildEmptyPathDraft());
   const [notice, setNotice] = useState("");
+  const selectedPathIdRef = useRef("");
 
-  const refreshPaths = async () => {
+  useEffect(() => {
+    selectedPathIdRef.current = selectedPathId;
+  }, [selectedPathId]);
+
+  const refreshPaths = useCallback(async () => {
     const allPaths = (await listLearningPathsShared()).sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
     setPaths(allPaths);
 
@@ -39,17 +49,22 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
       return;
     }
 
-    const hasSelected = allPaths.some((path) => path.id === selectedPathId);
-    const selectedPath = hasSelected ? allPaths.find((path) => path.id === selectedPathId) : allPaths[0];
+    const hasSelected = allPaths.some((path) => path.id === selectedPathIdRef.current);
+    const selectedPath = hasSelected
+      ? allPaths.find((path) => path.id === selectedPathIdRef.current)
+      : allPaths[0];
     if (selectedPath) {
       setSelectedPathId(selectedPath.id);
       setDraft({ ...selectedPath, steps: [...(selectedPath.steps || [])] });
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void refreshPaths();
-  }, []);
+    const timerId = window.setTimeout(() => {
+      void refreshPaths();
+    }, 0);
+    return () => window.clearTimeout(timerId);
+  }, [refreshPaths]);
 
   useRealtimeTables({
     tables: ["learning_paths", "learning_path_steps"],
@@ -121,6 +136,7 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
             steps={draft.steps || []}
             modules={modules}
             worksheets={worksheets}
+            printableWorksheets={printableWorksheets}
             onChangeSteps={(nextSteps) => setDraft((prev) => ({ ...prev, steps: nextSteps }))}
           />
 
@@ -169,7 +185,11 @@ export default function AdminPathManagement({ modules = [], worksheets = [], onS
                           {path.status === PATH_STATUS.ACTIVE ? "Active" : "Draft"}
                         </span>
                       </td>
-                      <td className={isLight ? "px-3 py-2 text-slate-700" : "px-3 py-2 text-slate-300"}>{new Date(path.updatedAt || path.createdAt || Date.now()).toLocaleDateString()}</td>
+                      <td className={isLight ? "px-3 py-2 text-slate-700" : "px-3 py-2 text-slate-300"}>
+                        {path.updatedAt || path.createdAt
+                          ? new Date(path.updatedAt || path.createdAt).toLocaleDateString()
+                          : "—"}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-2">
                           <button

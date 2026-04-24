@@ -225,8 +225,12 @@ export default function AdminWorkspace({
         sectionKeys = ["modules", "containers"];
         break;
       case "path":
-        fetchPromises = [listModulesShared({ forceReload }), listWorksheetsShared({ forceReload })];
-        sectionKeys = ["modules", "worksheets"];
+        fetchPromises = [
+          listModulesShared({ forceReload }),
+          listWorksheetsShared({ forceReload }),
+          listPrintableWorksheetsShared({ forceReload }),
+        ];
+        sectionKeys = ["modules", "worksheets", "printableWorksheets"];
         break;
       case "worksheets":
         fetchPromises = [
@@ -1560,7 +1564,12 @@ export default function AdminWorkspace({
   };
 
   const renderPath = () => (
-    <AdminPathManagement modules={modules} worksheets={worksheets} onSaved={refreshAll} />
+    <AdminPathManagement
+      modules={modules}
+      worksheets={worksheets}
+      printableWorksheets={printableWorksheets}
+      onSaved={refreshAll}
+    />
   );
 
   const renderWorksheets = () => {

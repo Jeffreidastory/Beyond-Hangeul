@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import UserPathTimeline from "@/components/path/UserPathTimeline";
 import {
   getActiveLearningPathShared,
+  listPrintableWorksheetsShared,
   listModulesShared,
   listWorksheetsShared,
 } from "@/services/dashboardDataService";
@@ -14,19 +15,27 @@ export default function UserPathRoute() {
 
   const loadPathData = async () => {
     try {
-      const [path, modules, worksheets] = await Promise.all([
+      const [path, modules, worksheets, printableWorksheets] = await Promise.all([
         getActiveLearningPathShared(),
         listModulesShared(),
         listWorksheetsShared(),
+        listPrintableWorksheetsShared(),
       ]);
-      setPathData({ path, modules, worksheets });
+      setPathData({
+        path,
+        modules,
+        worksheets: [...worksheets, ...printableWorksheets],
+      });
     } catch {
       setPathData({ path: null, modules: [], worksheets: [] });
     }
   };
 
   useEffect(() => {
-    void loadPathData();
+    const timerId = window.setTimeout(() => {
+      void loadPathData();
+    }, 0);
+    return () => window.clearTimeout(timerId);
   }, []);
 
   useRealtimeTables({

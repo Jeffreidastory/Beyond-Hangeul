@@ -1,14 +1,33 @@
 @import "tailwindcss";
 
 :root {
+  --background: #071426;
+  --foreground: #ffffff;
+  --surface: #0f1d32;
+  --ink-muted: #94a3b8;
+  --brand: #df5b3f;
+  --brand-deep: #ab2f1b;
+  --line: rgba(255, 255, 255, 0.1);
+  --font-space: var(--font-headline);
+  color-scheme: dark;
+}
+
+:root[data-profile-theme="light"] {
   --background: #f7f3ea;
   --foreground: #172033;
   --surface: #fffefb;
   --ink-muted: #50607a;
-  --brand: #df5b3f;
-  --brand-deep: #ab2f1b;
   --line: #eadfcb;
-  --font-space: var(--font-headline);
+  color-scheme: light;
+}
+
+:root[data-profile-theme="dark"] {
+  --background: #071426;
+  --foreground: #ffffff;
+  --surface: #0f1d32;
+  --ink-muted: #94a3b8;
+  --line: rgba(255, 255, 255, 0.1);
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -24,13 +43,25 @@
   --font-nav: var(--font-nav);
 }
 
+html,
+body {
+  background: #071426;
+  color: #ffffff;
+  min-height: 100%;
+}
+
 body {
   background:
-    radial-gradient(1200px circle at 20% 10%, #fff8e5 0%, transparent 45%),
-    radial-gradient(900px circle at 80% 80%, #ffe8d2 0%, transparent 40%),
+    radial-gradient(1200px circle at 20% 10%, rgba(15, 119, 198, 0.12) 0%, transparent 45%),
+    radial-gradient(900px circle at 80% 80%, rgba(246, 178, 31, 0.08) 0%, transparent 40%),
     var(--background);
   color: var(--foreground);
   min-height: 100vh;
+}
+
+body > main {
+  min-height: 100vh;
+  background: transparent;
 }
 
 .hero-learning-card {

@@ -6,6 +6,22 @@ const ADMIN_ROUTES = ["/admin"];
 const AUTH_ROUTES = ["/auth/login", "/auth/register", "/auth/BHadmin24"];
 
 export async function proxy(request) {
+  const pendingCookies = new Map();
+
+  const applyPendingCookies = (targetResponse) => {
+    pendingCookies.forEach(({ name, value, options }) => {
+      targetResponse.cookies.set(name, value, options);
+    });
+
+    return targetResponse;
+  };
+
+  const redirectWithAuthCookies = (pathname) => {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = pathname;
+    return applyPendingCookies(NextResponse.redirect(redirectUrl));
+  };
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -26,6 +42,7 @@ export async function proxy(request) {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value, options }) => {
+          pendingCookies.set(name, { name, value, options });
           request.cookies.set(name, value);
           response.cookies.set(name, value, options);
         });
@@ -43,9 +60,7 @@ export async function proxy(request) {
   const isAdminRoute = ADMIN_ROUTES.some((route) => path === route || path.startsWith(`${route}/`));
 
   if (!user && isProtected) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/auth/login";
-    return NextResponse.redirect(redirectUrl);
+    return redirectWithAuthCookies("/auth/login");
   }
 
   if (user && isAuthRoute) {
@@ -53,9 +68,7 @@ export async function proxy(request) {
     const isAdminUser = profile?.role === "admin";
 
     if (!isAdminUser) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/dashboard";
-      return NextResponse.redirect(redirectUrl);
+      return redirectWithAuthCookies("/dashboard");
     }
 
     return response;
@@ -65,9 +78,7 @@ export async function proxy(request) {
     const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
 
     if (profile?.role !== "admin") {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/dashboard";
-      return NextResponse.redirect(redirectUrl);
+      return redirectWithAuthCookies("/dashboard");
     }
   }
 

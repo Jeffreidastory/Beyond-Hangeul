@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import AuthNavbar from "@/components/AuthNavbar";
 import { useTheme } from "@/components/theme/ThemeProvider";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { getSupabaseBrowserClient, getSupabaseBrowserSession } from "@/lib/supabaseClient";
 
 const STATUS = {
   CHECKING: "checking",
@@ -88,9 +88,7 @@ export default function ConfirmSignupPage() {
           return;
         }
 
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const session = await getSupabaseBrowserSession();
 
         if (session?.user) {
           setPrimaryHref(nextPath);

@@ -35,7 +35,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${poppins.variable} ${montserrat.variable}`}
+      className={`${inter.variable} ${poppins.variable} ${montserrat.variable} bg-[#071426]`}
       data-scroll-behavior="smooth"
       style={{ fontSize: "100%" }}
       suppressHydrationWarning
@@ -50,10 +50,10 @@ export default function RootLayout({ children }) {
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="mask-icon" href="/icons/maskable-icon-512.png" color="#0b1728" />
       </head>
-      <body className="text-foreground [font-family:var(--font-body)]">
+      <body className="min-h-screen bg-[#071426] text-foreground [font-family:var(--font-body)]">
         <ThemeProvider>
           <NavigationLoadingOverlay />
-          <main className="mx-auto w-full max-w-7xl px-4 pb-14 pt-8 sm:px-6 lg:px-8">
+          <main className="mx-auto min-h-screen w-full max-w-7xl bg-transparent px-4 pb-14 pt-8 sm:px-6 lg:px-8">
             {children}
           </main>
         </ThemeProvider>

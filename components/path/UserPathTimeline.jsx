@@ -2,7 +2,7 @@ import { useState } from "react";
 import Link from "next/link";
 import UserPathStepItem from "@/components/path/UserPathStepItem";
 import { useTheme } from "@/components/theme/ThemeProvider";
-import { PATH_STEP_TYPE } from "@/types/dashboardModels";
+import { PATH_STEP_TYPE, WORKSHEET_KIND } from "@/types/dashboardModels";
 
 export default function UserPathTimeline({ path, modules = [], worksheets = [], moduleProgress = {}, worksheetScores = {} }) {
   const { isLight } = useTheme();
@@ -37,6 +37,10 @@ export default function UserPathTimeline({ path, modules = [], worksheets = [], 
 
     const worksheetRequirementMet = enabledTypes.includes(PATH_STEP_TYPE.WORKSHEET)
       ? linkedWorksheetIds.length > 0 && linkedWorksheetIds.every((worksheetId) => {
+          const worksheet = worksheetMap.get(worksheetId);
+          if (worksheet?.worksheetKind === WORKSHEET_KIND.PRINTABLE) {
+            return true;
+          }
           const score = worksheetScores[worksheetId];
           return Boolean(score?.quizComplete);
         })
@@ -102,13 +106,13 @@ export default function UserPathTimeline({ path, modules = [], worksheets = [], 
                 onViewDetails={() => {
                   const selectedModules = preferredModuleIds
                     .map((moduleId) => {
-                      const module = moduleMap.get(moduleId);
-                      if (!module) return null;
+                      const selectedModule = moduleMap.get(moduleId);
+                      if (!selectedModule) return null;
                       return {
-                        id: module.id,
-                        title: module.moduleName,
-                        href: `/dashboard?tab=modules&module=${module.id}`,
-                        locked: Boolean(module.isLocked),
+                        id: selectedModule.id,
+                        title: selectedModule.moduleName,
+                        href: `/dashboard?tab=modules&module=${selectedModule.id}`,
+                        locked: Boolean(selectedModule.isLocked),
                       };
                     })
                     .filter(Boolean);
@@ -116,10 +120,16 @@ export default function UserPathTimeline({ path, modules = [], worksheets = [], 
                     .map((worksheetId) => {
                       const worksheet = worksheetMap.get(worksheetId);
                       if (!worksheet) return null;
+                      const worksheetKind = worksheet.worksheetKind || WORKSHEET_KIND.ONLINE;
+                      const worksheetHref =
+                        worksheetKind === WORKSHEET_KIND.PRINTABLE
+                          ? "/dashboard?tab=worksheets&view=printable"
+                          : `/dashboard?tab=worksheets&view=online&worksheet=${worksheet.id}`;
                       return {
                         id: worksheet.id,
                         title: worksheet.title,
-                        href: `/dashboard?tab=worksheets&worksheet=${worksheet.id}`,
+                        worksheetKind,
+                        href: worksheetHref,
                         locked: false,
                       };
                     })
@@ -184,6 +194,7 @@ export default function UserPathTimeline({ path, modules = [], worksheets = [], 
                   {viewModalData.selectedWorksheets.length ? viewModalData.selectedWorksheets.map((sheet) => (
                     <Link key={sheet.id} href={sheet.href} className={`inline-flex rounded-md border px-2 py-1 ${isLight ? "border-slate-300 bg-slate-100 text-slate-700 hover:border-slate-400" : "border-white/20 bg-[#0f1d32] text-slate-100 hover:border-amber-300"}`}>
                       {sheet.title}
+                      {sheet.worksheetKind === WORKSHEET_KIND.PRINTABLE ? " (Printable)" : ""}
                     </Link>
                   )) : <p className={isLight ? "text-slate-500" : "text-slate-400"}>No worksheets selected.</p>}
                 </div>

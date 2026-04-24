@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { getSupabaseBrowserClient, getSupabaseBrowserUser } from "@/lib/supabaseClient";
 
 export default function ProgressToggleButton({ lessonId, initialCompleted = false, initialScore = 0 }) {
   const [completed, setCompleted] = useState(initialCompleted);
@@ -18,9 +18,7 @@ export default function ProgressToggleButton({ lessonId, initialCompleted = fals
     setLoading(true);
 
     const supabase = getSupabaseBrowserClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSupabaseBrowserUser();
 
     if (!user) {
       setLoading(false);

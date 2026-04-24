@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
-  ChevronRight,
   CheckSquare,
   Compass,
   FileText,
@@ -76,48 +75,39 @@ const menuItems = [
   {
     key: "modules",
     label: "Modules",
-    href: "/dashboard?tab=modules",
+    href: "/modules",
     icon: BookOpen,
   },
   {
-    key: "worksheets",
-    label: "Worksheets",
-    href: "/worksheets/online",
+    key: "printable-worksheets",
+    label: "Printable Worksheets",
+    href: "/printable",
+    icon: Printer,
+  },
+  {
+    key: "keyboard-practice",
+    label: "Keyboard Practice",
+    href: "/keyboard-practice",
     icon: CheckSquare,
   },
-  { key: "path", label: "Path", href: "/dashboard?tab=path", icon: Compass },
-  { key: "goal", label: "Goal", href: "/dashboard?tab=goal", icon: Flag },
+  { key: "path", label: "Path", href: "/path", icon: Compass },
+  { key: "goal", label: "Goal", href: "/goal", icon: Flag },
   {
     key: "payment",
     label: "Payment",
-    href: "/dashboard?tab=payment",
+    href: "/payment",
     icon: Landmark,
   },
   {
     key: "resources",
     label: "Resources",
-    href: "/dashboard?tab=resources",
+    href: "/resources",
     icon: Library,
   },
 ];
 
 const WORKSHEETS_VIEW_ONLINE = "online";
 const WORKSHEETS_VIEW_PRINTABLE = "printable";
-
-const worksheetsSubmenuItems = [
-  {
-    key: WORKSHEETS_VIEW_ONLINE,
-    label: "Online Worksheets",
-    description: "Interactive writing and quiz modes.",
-    icon: CheckSquare,
-  },
-  {
-    key: WORKSHEETS_VIEW_PRINTABLE,
-    label: "Printable Worksheets",
-    description: "Downloadable PDF files for practice.",
-    icon: Printer,
-  },
-];
 
 function normalizeWorksheetsView(value) {
   return value === WORKSHEETS_VIEW_PRINTABLE
@@ -167,8 +157,6 @@ export default function UserDashboardView({
   const [worksheetsView, setWorksheetsView] = useState(() =>
     normalizeWorksheetsView(searchParams.get("view")),
   );
-  const [worksheetsMenuOpen, setWorksheetsMenuOpen] = useState(false);
-  const [mobileWorksheetsMenuOpen, setMobileWorksheetsMenuOpen] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -176,13 +164,9 @@ export default function UserDashboardView({
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [moduleFileProgress, setModuleFileProgress] = useState({});
-  const worksheetsMenuRef = useRef(null);
-  const mobileWorksheetsMenuRef = useRef(null);
 
   const setTab = useCallback((tabKey) => {
     setActiveTab(tabKey);
-    setWorksheetsMenuOpen(false);
-    setMobileWorksheetsMenuOpen(false);
 
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -203,8 +187,6 @@ export default function UserDashboardView({
     setWorksheetsView(resolvedView);
     setSelectedWorksheetId("");
     setWorksheetNotice("");
-    setWorksheetsMenuOpen(false);
-    setMobileWorksheetsMenuOpen(false);
 
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -214,6 +196,44 @@ export default function UserDashboardView({
       window.history.replaceState(null, "", url.toString());
     }
   }, []);
+
+  const openWorksheetById = useCallback(
+    (worksheetId) => {
+      const normalizedId = String(worksheetId || "").trim();
+      openWorksheetsView(WORKSHEETS_VIEW_ONLINE);
+      setSelectedWorksheetId(normalizedId);
+
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("tab", "worksheets");
+        url.searchParams.set("view", WORKSHEETS_VIEW_ONLINE);
+        if (normalizedId) {
+          url.searchParams.set("worksheet", normalizedId);
+        } else {
+          url.searchParams.delete("worksheet");
+        }
+        window.history.replaceState(null, "", url.toString());
+      }
+    },
+    [openWorksheetsView],
+  );
+
+  const handleSidebarItemSelect = useCallback(
+    (itemKey) => {
+      if (itemKey === "printable-worksheets") {
+        openWorksheetsView(WORKSHEETS_VIEW_PRINTABLE);
+        return;
+      }
+
+      if (itemKey === "keyboard-practice") {
+        openWorksheetsView(WORKSHEETS_VIEW_ONLINE);
+        return;
+      }
+
+      setTab(itemKey);
+    },
+    [openWorksheetsView, setTab],
+  );
   const { isLight, toggleTheme } = useTheme();
   const isSidebarCollapsed = !isSidebarHovered;
   const [learningData, setLearningData] = useState(
@@ -355,8 +375,7 @@ export default function UserDashboardView({
           setTab("modules");
           break;
         case "Worksheet":
-          openWorksheetsView(WORKSHEETS_VIEW_ONLINE);
-          setSelectedWorksheetId(result.data.id);
+          openWorksheetById(result.data.id);
           break;
         case "Resource":
           if (result.data.fileUrl) {
@@ -378,7 +397,7 @@ export default function UserDashboardView({
           break;
       }
     },
-    [openWorksheetsView, setTab, setIsSearchOpen, setQuery],
+    [openWorksheetById, setTab, setIsSearchOpen, setQuery],
   );
 
   useEffect(() => {
@@ -507,33 +526,6 @@ export default function UserDashboardView({
     window.addEventListener("resize", positionNotificationPanel);
     return () => window.removeEventListener("resize", positionNotificationPanel);
   }, [notificationsOpen, positionNotificationPanel]);
-
-  useEffect(() => {
-    if (!worksheetsMenuOpen && !mobileWorksheetsMenuOpen) {
-      return undefined;
-    }
-
-    const handleOutsideMenuClick = (event) => {
-      const target = event.target;
-      if (worksheetsMenuRef.current?.contains(target)) return;
-      if (mobileWorksheetsMenuRef.current?.contains(target)) return;
-      setWorksheetsMenuOpen(false);
-      setMobileWorksheetsMenuOpen(false);
-    };
-
-    document.addEventListener("mousedown", handleOutsideMenuClick);
-    document.addEventListener("touchstart", handleOutsideMenuClick);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideMenuClick);
-      document.removeEventListener("touchstart", handleOutsideMenuClick);
-    };
-  }, [mobileWorksheetsMenuOpen, worksheetsMenuOpen]);
-
-  useEffect(() => {
-    if (isSidebarCollapsed) {
-      setWorksheetsMenuOpen(false);
-    }
-  }, [isSidebarCollapsed]);
 
   const refreshLearningData = useCallback(async () => {
     syncUsers([{ id: userId, email: userEmail }]);
@@ -1079,8 +1071,13 @@ export default function UserDashboardView({
     [learningData.modules],
   );
   const worksheetMap = useMemo(
-    () => new Map(learningData.worksheets.map((sheet) => [sheet.id, sheet])),
-    [learningData.worksheets],
+    () =>
+      new Map(
+        [...learningData.worksheets, ...(learningData.printableWorksheets || [])].map(
+          (sheet) => [sheet.id, sheet],
+        ),
+      ),
+    [learningData.printableWorksheets, learningData.worksheets],
   );
 
   const sortedWorksheets = useMemo(
@@ -1846,74 +1843,6 @@ export default function UserDashboardView({
     </div>
   );
 
-  const renderWorksheetsSubmenuContent = ({ mobile = false } = {}) => (
-    <div className={`${mobile ? "space-y-2.5" : "space-y-2"}`}>
-      {worksheetsSubmenuItems.map((entry) => {
-        const isActive = activeTab === "worksheets" && worksheetsView === entry.key;
-        const SubmenuIcon = entry.icon;
-        return (
-          <button
-            key={entry.key}
-            type="button"
-            onClick={() => openWorksheetsView(entry.key)}
-            className={`group relative w-full overflow-hidden rounded-xl border px-3 py-2.5 text-left transition ${
-              isActive
-                ? isLight
-                  ? "border-amber-300 bg-amber-50 text-amber-900 shadow-[0_0_0_1px_rgba(251,191,36,0.35)_inset]"
-                  : "border-amber-300/55 bg-gradient-to-r from-[#3b465d] via-[#3f4d67] to-[#314155] text-amber-100 shadow-[0_0_0_1px_rgba(252,211,77,0.2)_inset]"
-                : isLight
-                  ? "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                  : "border-white/10 bg-[#11243b] text-slate-100 hover:bg-[#162f4d]"
-            }`}
-          >
-            <div className="grid grid-cols-[auto_1px_minmax(0,1fr)] items-start gap-3">
-              <span
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border ${
-                  isActive
-                    ? isLight
-                      ? "border-amber-300/80 bg-amber-100 text-amber-700"
-                      : "border-amber-200/50 bg-amber-300/10 text-amber-200"
-                    : isLight
-                      ? "border-slate-300 bg-white text-slate-600 group-hover:text-slate-900"
-                      : "border-white/15 bg-[#0f1d32] text-slate-300 group-hover:text-white"
-                }`}
-              >
-                <SubmenuIcon size={18} />
-              </span>
-              <span
-                className={`mt-0.5 block h-8 w-px ${
-                  isActive
-                    ? isLight
-                      ? "bg-amber-300/80"
-                      : "bg-amber-200/45"
-                    : isLight
-                      ? "bg-slate-300"
-                      : "bg-white/15"
-                }`}
-              />
-              <span className="min-w-0">
-                <span className="block text-[1.04rem] font-semibold leading-5">{entry.label}</span>
-                <span
-                  className={`mt-1 block text-xs leading-4 whitespace-normal ${
-                    isActive
-                      ? isLight
-                        ? "text-amber-800/85"
-                        : "text-slate-200/85"
-                      : isLight
-                        ? "text-slate-500"
-                        : "text-slate-400"
-                  }`}
-                >
-                  {entry.description}
-                </span>
-              </span>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-
   const renderMainSection = () => {
     if (activeTab === "modules") {
       return (
@@ -1968,7 +1897,10 @@ export default function UserDashboardView({
           <UserPathTimeline
             path={learningData.activeLearningPath}
             modules={learningData.modules}
-            worksheets={learningData.worksheets}
+            worksheets={[
+              ...learningData.worksheets,
+              ...(learningData.printableWorksheets || []),
+            ]}
             moduleProgress={moduleProgress}
             worksheetScores={worksheetScores}
           />
@@ -2006,14 +1938,14 @@ export default function UserDashboardView({
                         {selectedWorksheet.title}
                       </h2>
                       <p className="text-sm uppercase tracking-[0.35em] text-amber-300">
-                        Writing Practice
+                        Keyboard Practice
                       </p>
                     </div>
                   </>
                 ) : (
                   <div>
                     <h2 className="text-xl font-bold">
-                      {isPrintableView ? "Printable Worksheets" : "Online Worksheets"}
+                      {isPrintableView ? "Printable Worksheets" : "Keyboard Practice"}
                     </h2>
                     {isWorksheetsLoading ? (
                       <div className={`mt-2 h-4 w-72 max-w-full overflow-hidden rounded-full ${isLight ? "bg-slate-200" : "bg-white/10"}`}>
@@ -2031,7 +1963,7 @@ export default function UserDashboardView({
                       >
                         {isPrintableView
                           ? "Open or download worksheet files uploaded by the admin."
-                          : "Select a worksheet card to start Writing and Quiz mode."}
+                          : "Select a worksheet card to start keyboard writing and quiz mode."}
                       </p>
                     )}
                   </div>
@@ -2839,10 +2771,12 @@ export default function UserDashboardView({
           <nav className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isWorksheetsItem = item.key === "worksheets";
-              const isActive = isWorksheetsItem
-                ? activeTab === "worksheets" || mobileWorksheetsMenuOpen
-                : activeTab === item.key;
+              const isActive =
+                item.key === "printable-worksheets"
+                  ? activeTab === "worksheets" && worksheetsView === WORKSHEETS_VIEW_PRINTABLE
+                  : item.key === "keyboard-practice"
+                    ? activeTab === "worksheets" && worksheetsView === WORKSHEETS_VIEW_ONLINE
+                    : activeTab === item.key;
               const navItemClass = `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                 isSidebarCollapsed ? "justify-center" : "justify-start"
               } ${
@@ -2850,101 +2784,31 @@ export default function UserDashboardView({
                   ? isLight
                     ? "bg-amber-100 text-amber-800"
                     : "bg-amber-400/20 text-amber-300"
-                  : isWorksheetsItem
-                    ? isLight
-                      ? "text-slate-700"
-                      : "text-slate-300"
                   : isLight
                     ? "text-slate-700 hover:bg-slate-100"
                     : "text-slate-300 hover:bg-white/10"
               }`;
 
               return (
-                <div
+                <button
                   key={item.key}
-                  className="relative"
-                  ref={isWorksheetsItem ? worksheetsMenuRef : undefined}
+                  type="button"
+                  onClick={() => handleSidebarItemSelect(item.key)}
+                  className={navItemClass}
                 >
-                  <div className={isWorksheetsItem ? "flex items-center gap-1" : undefined}>
-                    {isWorksheetsItem ? (
-                      <div
-                        aria-hidden="true"
-                        className={`${navItemClass} flex-1 cursor-default select-none`}
-                      >
-                        <span className="inline-flex items-center justify-center rounded-full bg-transparent p-1">
-                          <Icon size={isSidebarCollapsed ? 20 : 22} />
-                        </span>
-                        <span
-                          className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${
-                            isSidebarCollapsed
-                              ? "max-w-0 opacity-0 lg:max-w-40 lg:group-hover:max-w-full lg:group-hover:opacity-100"
-                              : "max-w-full opacity-100"
-                          }`}
-                        >
-                          {item.label}
-                        </span>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setTab(item.key)}
-                        className={navItemClass}
-                      >
-                        <span className="inline-flex items-center justify-center rounded-full bg-transparent p-1">
-                          <Icon size={isSidebarCollapsed ? 20 : 22} />
-                        </span>
-                        <span
-                          className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${
-                            isSidebarCollapsed
-                              ? "max-w-0 opacity-0 lg:max-w-40 lg:group-hover:max-w-full lg:group-hover:opacity-100"
-                              : "max-w-full opacity-100"
-                          }`}
-                        >
-                          {item.label}
-                        </span>
-                      </button>
-                    )}
-
-                    {isWorksheetsItem && !isSidebarCollapsed ? (
-                      <button
-                        type="button"
-                        onClick={() => setWorksheetsMenuOpen((open) => !open)}
-                        aria-label={worksheetsMenuOpen ? "Close worksheets menu" : "Open worksheets menu"}
-                        aria-haspopup="menu"
-                        aria-expanded={worksheetsMenuOpen}
-                        className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
-                          isLight
-                            ? "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                            : "text-slate-300 hover:bg-white/10 hover:text-white"
-                        }`}
-                      >
-                        <ChevronRight
-                          size={16}
-                          className={`transition-transform ${worksheetsMenuOpen ? "rotate-90" : ""}`}
-                        />
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {isWorksheetsItem && worksheetsMenuOpen ? (
-                    <div
-                      className={`absolute left-full top-0 z-50 ml-2 w-72 rounded-2xl border p-3 shadow-2xl ${
-                        isLight
-                          ? "border-slate-200 bg-white"
-                          : "border-white/10 bg-[#0f1d32]"
-                      }`}
-                    >
-                      <p
-                        className={`mb-2 text-xs font-semibold uppercase tracking-wide ${
-                          isLight ? "text-slate-500" : "text-slate-400"
-                        }`}
-                      >
-                        Worksheets
-                      </p>
-                      {renderWorksheetsSubmenuContent()}
-                    </div>
-                  ) : null}
-                </div>
+                  <span className="inline-flex items-center justify-center rounded-full bg-transparent p-1">
+                    <Icon size={isSidebarCollapsed ? 20 : 22} />
+                  </span>
+                  <span
+                    className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${
+                      isSidebarCollapsed
+                        ? "max-w-0 opacity-0 lg:max-w-40 lg:group-hover:max-w-full lg:group-hover:opacity-100"
+                        : "max-w-full opacity-100"
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                </button>
               );
             })}
           </nav>
@@ -3007,22 +2871,17 @@ export default function UserDashboardView({
           <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-1 pb-1">
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isWorksheetsItem = item.key === "worksheets";
-              const isActive = isWorksheetsItem
-                ? activeTab === "worksheets"
-                : activeTab === item.key;
+              const isActive =
+                item.key === "printable-worksheets"
+                  ? activeTab === "worksheets" && worksheetsView === WORKSHEETS_VIEW_PRINTABLE
+                  : item.key === "keyboard-practice"
+                    ? activeTab === "worksheets" && worksheetsView === WORKSHEETS_VIEW_ONLINE
+                    : activeTab === item.key;
               return (
                 <button
                   key={item.key}
                   type="button"
-                  onClick={() => {
-                    if (isWorksheetsItem) {
-                      setMobileWorksheetsMenuOpen((open) => !open);
-                      return;
-                    }
-                    setMobileWorksheetsMenuOpen(false);
-                    setTab(item.key);
-                  }}
+                  onClick={() => handleSidebarItemSelect(item.key)}
                   className={`shrink-0 min-w-18 rounded-3xl px-3 py-2 text-[11px] font-semibold transition ${isActive ? "bg-amber-400 text-[#0b1728]" : isLight ? "text-slate-700 hover:bg-slate-100" : "text-slate-200 hover:bg-white/10"}`}
                 >
                   <div className="flex flex-col items-center justify-center gap-1">
@@ -3034,25 +2893,6 @@ export default function UserDashboardView({
             })}
           </div>
         </nav>
-        {mobileWorksheetsMenuOpen ? (
-          <div
-            ref={mobileWorksheetsMenuRef}
-            className={`fixed bottom-20 left-4 right-4 z-50 rounded-2xl border p-3 shadow-2xl ${
-              isLight
-                ? "border-slate-200 bg-white"
-                : "border-white/10 bg-[#0f1d32]"
-            }`}
-          >
-            <p
-              className={`mb-2 text-xs font-semibold uppercase tracking-wide ${
-                isLight ? "text-slate-500" : "text-slate-400"
-              }`}
-            >
-              Worksheets
-            </p>
-            {renderWorksheetsSubmenuContent({ mobile: true })}
-          </div>
-        ) : null}
       </div>
 
       {activeTab === "modules" ? (

@@ -2,7 +2,13 @@ import { useTheme } from "@/components/theme/ThemeProvider";
 import StepCard from "@/components/path/StepCard";
 import { PATH_STEP_TYPE } from "@/types/dashboardModels";
 
-export default function StepBuilder({ steps, modules, worksheets, onChangeSteps }) {
+export default function StepBuilder({
+  steps,
+  modules,
+  worksheets,
+  printableWorksheets = [],
+  onChangeSteps,
+}) {
   const updateStep = (index, nextStep) => {
     const next = [...steps];
     next[index] = nextStep;
@@ -68,6 +74,7 @@ export default function StepBuilder({ steps, modules, worksheets, onChangeSteps 
             index={index}
             modules={modules}
             worksheets={worksheets}
+            printableWorksheets={printableWorksheets}
             onChange={(nextStep) => updateStep(index, nextStep)}
             onMoveUp={() => moveStep(index, index - 1)}
             onMoveDown={() => moveStep(index, index + 1)}

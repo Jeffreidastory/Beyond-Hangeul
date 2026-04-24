@@ -1,10 +1,11 @@
-import { PATH_STEP_TYPE } from "@/types/dashboardModels";
+import { PATH_STEP_TYPE, WORKSHEET_KIND } from "@/types/dashboardModels";
 
 export default function StepCard({
   step,
   index,
   modules,
   worksheets,
+  printableWorksheets = [],
   onChange,
   onMoveUp,
   onMoveDown,
@@ -13,6 +14,14 @@ export default function StepCard({
   disableMoveDown,
 }) {
   const STEP_TYPE_ORDER = [PATH_STEP_TYPE.MODULE, PATH_STEP_TYPE.WORKSHEET, PATH_STEP_TYPE.INFO];
+  const allWorksheets = Array.from(
+    new Map(
+      [...(worksheets || []), ...(printableWorksheets || [])].map((sheet) => [
+        sheet.id,
+        sheet,
+      ]),
+    ).values(),
+  );
   const enabledTypes = Array.isArray(step.enabledTypes) && step.enabledTypes.length
     ? step.enabledTypes.filter((type) => STEP_TYPE_ORDER.includes(type))
     : [step.type || PATH_STEP_TYPE.INFO];
@@ -89,6 +98,13 @@ export default function StepCard({
       ? enabledTypes.filter((item) => item !== type)
       : [...enabledTypes, type];
     syncStep({ enabledTypes: nextTypes });
+  };
+
+  const getWorksheetLabel = (worksheet) => {
+    if (!worksheet) return "Unknown Worksheet";
+    return worksheet.worksheetKind === WORKSHEET_KIND.PRINTABLE
+      ? `${worksheet.title} (Printable)`
+      : worksheet.title;
   };
 
   return (
@@ -194,7 +210,7 @@ export default function StepCard({
           <div className="rounded-xl border border-white/20 bg-[#0f1d32] p-3">
             <p className="mb-2 text-xs text-slate-400">Select worksheet(s)</p>
             <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
-              {worksheets.map((sheet) => {
+              {allWorksheets.map((sheet) => {
                 const checked = selectedWorksheetIds.includes(sheet.id);
                 return (
                   <label key={sheet.id} className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#13243d] px-2 py-1.5 text-sm text-slate-100">
@@ -203,11 +219,11 @@ export default function StepCard({
                       checked={checked}
                       onChange={() => toggleWorksheetSelection(sheet.id)}
                     />
-                    <span className="truncate">{sheet.title}</span>
+                    <span className="truncate">{getWorksheetLabel(sheet)}</span>
                   </label>
                 );
               })}
-              {worksheets.length === 0 ? <p className="text-xs text-slate-500">No worksheets available.</p> : null}
+              {allWorksheets.length === 0 ? <p className="text-xs text-slate-500">No worksheets available.</p> : null}
             </div>
           </div>
         ) : null}
@@ -217,10 +233,10 @@ export default function StepCard({
             <p className="text-xs text-slate-400">Selected Modules</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {selectedModuleIds.length ? selectedModuleIds.map((id) => {
-                const module = modules.find((item) => item.id === id);
+                const selectedModule = modules.find((item) => item.id === id);
                 return (
                   <span key={id} className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-200">
-                    {module?.moduleName || "Unknown Module"}
+                    {selectedModule?.moduleName || "Unknown Module"}
                   </span>
                 );
               }) : <span className="text-xs text-slate-500">No modules selected.</span>}
@@ -233,10 +249,10 @@ export default function StepCard({
             <p className="text-xs text-slate-400">Selected Worksheets</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {selectedWorksheetIds.length ? selectedWorksheetIds.map((id) => {
-                const worksheet = worksheets.find((item) => item.id === id);
+                const worksheet = allWorksheets.find((item) => item.id === id);
                 return (
                   <span key={id} className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-200">
-                    {worksheet?.title || "Unknown Worksheet"}
+                    {getWorksheetLabel(worksheet)}
                   </span>
                 );
               }) : <span className="text-xs text-slate-500">No worksheets selected.</span>}

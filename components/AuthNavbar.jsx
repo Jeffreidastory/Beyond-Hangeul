@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { getSupabaseBrowserClient, getSupabaseBrowserSession } from "@/lib/supabaseClient";
 
 export default function AuthNavbar({ page = "login" }) {
   const router = useRouter();
@@ -28,13 +28,11 @@ export default function AuthNavbar({ page = "login" }) {
     let mounted = true;
 
     const tryRedirect = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const session = await getSupabaseBrowserSession();
 
       if (!mounted) return;
       if (session?.user) {
-        await router.replace("/dashboard");
+        router.replace("/dashboard");
       }
     };
 
@@ -42,10 +40,10 @@ export default function AuthNavbar({ page = "login" }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       if (session?.user) {
-        await router.replace("/dashboard");
+        router.replace("/dashboard");
       }
     });
 

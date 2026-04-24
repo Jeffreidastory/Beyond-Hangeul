@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { getSupabaseBrowserSession } from "@/lib/supabaseClient";
 
 const SECTION_IDS = ["home", "about", "reviews", "contact"];
 
@@ -34,10 +34,7 @@ export default function LandingNavbar() {
 
     try {
       window.sessionStorage.setItem("landing-signin-loading", "1");
-      const supabase = getSupabaseBrowserClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const session = await getSupabaseBrowserSession();
 
       const destination = session?.user ? "/dashboard" : "/auth/login";
       const redirected = await router.push(destination);
