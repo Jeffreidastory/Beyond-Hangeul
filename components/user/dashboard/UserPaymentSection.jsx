@@ -55,12 +55,19 @@ export default function UserPaymentSection({
   const isPending = status === PAYMENT_STATUS.PENDING;
   const isRejected = status === PAYMENT_STATUS.REJECTED;
 
-  const statusTone = {
-    active: "border-emerald-400/40 bg-emerald-500/10 text-emerald-300",
-    pending: "border-amber-400/40 bg-amber-500/10 text-amber-300",
-    rejected: "border-rose-400/40 bg-rose-500/10 text-rose-300",
-    inactive: "border-slate-500/40 bg-slate-600/10 text-slate-300",
-  };
+  const statusTone = isLight
+    ? {
+        active: "border-emerald-300 bg-emerald-100 text-emerald-800",
+        pending: "border-amber-300 bg-amber-100 text-amber-800",
+        rejected: "border-rose-300 bg-rose-100 text-rose-800",
+        inactive: "border-slate-300 bg-slate-100 text-slate-700",
+      }
+    : {
+        active: "border-emerald-400/40 bg-emerald-500/10 text-emerald-300",
+        pending: "border-amber-400/40 bg-amber-500/10 text-amber-300",
+        rejected: "border-rose-400/40 bg-rose-500/10 text-rose-300",
+        inactive: "border-slate-500/40 bg-slate-600/10 text-slate-300",
+      };
 
   const statusLabel = {
     active: "Subscribed",
@@ -93,7 +100,7 @@ export default function UserPaymentSection({
           </div>
           <div className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold ${statusTone[status]}`}>
             <span>{statusLabel[status]}</span>
-            {isActive && expiryDate ? <span className="text-slate-200">Expires {expiryDate}</span> : null}
+            {isActive && expiryDate ? <span className={isLight ? "text-emerald-700" : "text-slate-200"}>Expires {expiryDate}</span> : null}
           </div>
         </div>
       </section>
@@ -123,23 +130,23 @@ export default function UserPaymentSection({
               >
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm uppercase tracking-[0.2em] text-amber-300">{plan.name}</p>
-                    <p className="mt-3 text-3xl font-bold text-white">₱{plan.price}</p>
+                    <p className={`text-sm uppercase tracking-[0.2em] ${isLight ? "text-amber-700" : "text-amber-300"}`}>{plan.name}</p>
+                    <p className={`mt-3 text-3xl font-bold ${isLight ? "text-slate-900" : "text-white"}`}>₱{plan.price}</p>
                   </div>
                   {plan.featured ? (
-                    <div className="rounded-full bg-amber-400/15 px-3 py-1 text-xs font-semibold text-amber-200">
+                    <div className={`rounded-full px-3 py-1 text-xs font-semibold ${isLight ? "bg-amber-100 text-amber-800" : "bg-amber-400/15 text-amber-200"}`}>
                       Lifetime
                     </div>
                   ) : null}
                 </div>
-                <p className="mt-3 text-sm leading-6 text-slate-300">{plan.description}</p>
-                <ul className="mt-4 space-y-3 text-sm text-slate-200">
+                <p className={`mt-3 text-sm leading-6 ${isLight ? "text-slate-700" : "text-slate-300"}`}>{plan.description}</p>
+                <ul className={`mt-4 space-y-3 text-sm ${isLight ? "text-slate-700" : "text-slate-200"}`}>
                   <li className="flex items-center gap-3">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-300">✓</span>
+                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${isLight ? "bg-emerald-100 text-emerald-700" : "bg-emerald-500/10 text-emerald-300"}`}>✓</span>
                     <span>All modules included</span>
                   </li>
                   <li className="flex items-center gap-3">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-300">✓</span>
+                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${isLight ? "bg-emerald-100 text-emerald-700" : "bg-emerald-500/10 text-emerald-300"}`}>✓</span>
                     <span>All worksheets unlocked</span>
                   </li>
                   
@@ -187,8 +194,8 @@ export default function UserPaymentSection({
             <div className="mt-5 flex-1 flex flex-col justify-between">
               <div className={`flex-1 rounded-3xl border p-4 ${isLight ? "border-slate-200 bg-white" : "border-white/10 bg-[#0f1627]"}`}>
               <p className="text-xs uppercase tracking-wide text-slate-400">Number Details</p>
-              <p className="mt-2 text-lg font-semibold text-white">{selectedMethod?.accountNumber || "No number configured"}</p>
-              <p className="mt-1 text-sm text-slate-400">{selectedMethod?.accountName || "No account name"}</p>
+              <p className={`mt-2 text-lg font-semibold ${isLight ? "text-slate-900" : "text-white"}`}>{selectedMethod?.accountNumber || "No number configured"}</p>
+              <p className={`mt-1 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>{selectedMethod?.accountName || "No account name"}</p>
               <div className="mt-4">
                 {displayQrCode ? (
                   <div className="relative h-52 w-full overflow-hidden rounded-3xl border border-slate-700">
@@ -219,9 +226,9 @@ export default function UserPaymentSection({
               {latestRequest.status === PAYMENT_STATUS.APPROVED ? "Approved" : latestRequest.status === PAYMENT_STATUS.PENDING ? "Pending" : latestRequest.status === PAYMENT_STATUS.REJECTED ? "Rejected" : "Unknown"}
             </span>
           </div>
-          <p className="mt-3 text-sm text-slate-100">{latestRequest.planLabel}</p>
-          <p className="mt-2 text-sm text-slate-400">Submitted: {requestSubmittedAt}</p>
-          <p className="mt-2 text-sm text-slate-400">Reference: {latestRequest.reference || "None"}</p>
+          <p className={`mt-3 text-sm ${isLight ? "text-slate-900" : "text-slate-100"}`}>{latestRequest.planLabel}</p>
+          <p className={`mt-2 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>Submitted: {requestSubmittedAt}</p>
+          <p className={`mt-2 text-sm ${isLight ? "text-slate-600" : "text-slate-400"}`}>Reference: {latestRequest.reference || "None"}</p>
         </section>
       ) : null}
 
@@ -315,7 +322,7 @@ export default function UserPaymentSection({
                 <style>{`@keyframes upload-sweep { 0% { transform: translateX(-110%); } 100% { transform: translateX(110%); } } .animate-upload-sweep { animation: upload-sweep 1s linear infinite; }`}</style>
               ) : null}
 
-              {notice ? <p className="text-sm text-emerald-400">{notice}</p> : null}
+              {notice ? <p className={`text-sm ${isLight ? "text-emerald-700" : "text-emerald-400"}`}>{notice}</p> : null}
             </div>
           </div>
         </div>

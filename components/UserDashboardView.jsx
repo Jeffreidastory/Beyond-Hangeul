@@ -1643,8 +1643,12 @@ export default function UserDashboardView({
               <span
                 className={`inline-flex items-center gap-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                   isPremium
-                    ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
-                    : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                    ? isLight
+                      ? "border-amber-300 bg-amber-100 text-amber-900"
+                      : "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                    : isLight
+                      ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                      : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
                 }`}
               >
                 {isPremium ? "Premium" : "Free"}
@@ -2040,8 +2044,12 @@ export default function UserDashboardView({
                             <span
                               className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                                 sheet.accessType === "paid"
-                                  ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
-                                  : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                                  ? isLight
+                                    ? "border-amber-300 bg-amber-100 text-amber-900"
+                                    : "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                                  : isLight
+                                    ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                                    : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
                               }`}
                             >
                               {sheet.accessType === "paid" ? "Premium" : "Free"}
@@ -2146,8 +2154,12 @@ export default function UserDashboardView({
                           <span
                             className={`absolute right-3 top-3 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                               sheet.accessType === "paid"
-                                ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
-                                : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                                ? isLight
+                                  ? "border-amber-300 bg-amber-100 text-amber-900"
+                                  : "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                                : isLight
+                                  ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                                  : "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
                             }`}
                           >
                             {sheet.accessType === "paid" ? "Premium" : "Free"}
@@ -2160,7 +2172,7 @@ export default function UserDashboardView({
                             {sheet.entries?.length || 0} rows - Writing + Quiz
                           </p>
                           <p
-                            className={`mt-1 text-[11px] font-semibold ${sheetLocked ? "text-amber-300" : isLight ? "text-emerald-700" : "text-emerald-300"}`}
+                            className={`mt-1 text-[11px] font-semibold ${sheetLocked ? (isLight ? "text-amber-700" : "text-amber-300") : isLight ? "text-emerald-700" : "text-emerald-300"}`}
                           >
                             {sheet.accessType === "paid"
                               ? "Premium Worksheet"

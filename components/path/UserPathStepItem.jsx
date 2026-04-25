@@ -1,14 +1,19 @@
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { PATH_STEP_TYPE } from "@/types/dashboardModels";
 
-const typeBadge = {
-  [PATH_STEP_TYPE.MODULE]: "border-amber-400/40 bg-amber-500/10 text-amber-200",
-  [PATH_STEP_TYPE.WORKSHEET]: "border-emerald-400/40 bg-emerald-500/10 text-emerald-200",
-  [PATH_STEP_TYPE.INFO]: "border-sky-400/40 bg-sky-500/10 text-sky-200",
-};
-
 export default function UserPathStepItem({ step, index, status, onViewDetails }) {
   const { isLight } = useTheme();
+  const typeBadge = {
+    [PATH_STEP_TYPE.MODULE]: isLight
+      ? "border-amber-300 bg-amber-100 text-amber-900"
+      : "border-amber-400/40 bg-amber-500/10 text-amber-200",
+    [PATH_STEP_TYPE.WORKSHEET]: isLight
+      ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+      : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200",
+    [PATH_STEP_TYPE.INFO]: isLight
+      ? "border-sky-300 bg-sky-100 text-sky-900"
+      : "border-sky-400/40 bg-sky-500/10 text-sky-200",
+  };
   const enabledTypes = Array.isArray(step.enabledTypes) && step.enabledTypes.length
     ? step.enabledTypes
     : [step.type || PATH_STEP_TYPE.INFO];
@@ -29,7 +34,7 @@ export default function UserPathStepItem({ step, index, status, onViewDetails })
           <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${isLight ? "border-slate-300 bg-slate-100 text-slate-700" : "border-white/20 bg-[#0f1d32] text-slate-200"}`}>Step {index + 1}</span>
           <div className="flex flex-wrap items-center gap-1">
             {enabledTypes.map((type) => (
-              <span key={`${step.id || index}-${type}`} className={`rounded-full border px-2 py-1 text-[11px] font-semibold uppercase ${typeBadge[type] || typeBadge.info}`}>
+              <span key={`${step.id || index}-${type}`} className={`rounded-full border px-2 py-1 text-[11px] font-semibold uppercase ${typeBadge[type] || typeBadge[PATH_STEP_TYPE.INFO]}`}>
                 {type || "info"}
               </span>
             ))}
