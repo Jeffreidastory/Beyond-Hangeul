@@ -269,6 +269,8 @@ export default function UserDashboardView({
   const [paymentNotice, setPaymentNotice] = useState("");
   const [isSubmittingPaymentProof, setIsSubmittingPaymentProof] = useState(false);
   const [worksheetNotice, setWorksheetNotice] = useState("");
+  const [moduleFileOpenNotice, setModuleFileOpenNotice] = useState("");
+  const [moduleFileOpenFallbackUrl, setModuleFileOpenFallbackUrl] = useState("");
   const [isWorksheetsLoading, setIsWorksheetsLoading] = useState(true);
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedWorksheetId, setSelectedWorksheetId] = useState("");
@@ -311,6 +313,63 @@ export default function UserDashboardView({
   const getModuleFileIdentifier = (moduleId, index = 0) => {
     return `${moduleId}:section-${index}`;
   };
+
+  const isStandalonePwaMode = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    const displayModeStandalone =
+      typeof window.matchMedia === "function" &&
+      (window.matchMedia("(display-mode: standalone)").matches ||
+        window.matchMedia("(display-mode: fullscreen)").matches ||
+        window.matchMedia("(display-mode: minimal-ui)").matches);
+    const iosStandalone = window.navigator?.standalone === true;
+    return displayModeStandalone || iosStandalone;
+  }, []);
+
+  const normalizeFileUrl = useCallback((candidateUrl) => {
+    if (typeof window === "undefined") return "";
+    const trimmed = String(candidateUrl || "").trim();
+    if (!trimmed) return "";
+
+    try {
+      return new URL(trimmed, window.location.href).toString();
+    } catch {
+      return "";
+    }
+  }, []);
+
+  const triggerModuleFileOpen = useCallback(
+    (fileUrl) => {
+      const normalizedUrl = normalizeFileUrl(fileUrl);
+      if (!normalizedUrl) {
+        return { triggered: false, url: "" };
+      }
+
+      if (isStandalonePwaMode()) {
+        try {
+          window.location.href = normalizedUrl;
+          return { triggered: true, url: normalizedUrl };
+        } catch (error) {
+          console.warn("Unable to open module file in standalone mode:", error);
+          return { triggered: false, url: normalizedUrl };
+        }
+      }
+
+      try {
+        const link = document.createElement("a");
+        link.href = normalizedUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        return { triggered: true, url: normalizedUrl };
+      } catch (error) {
+        console.warn("Unable to open module file with anchor link:", error);
+        return { triggered: false, url: normalizedUrl };
+      }
+    },
+    [isStandalonePwaMode, normalizeFileUrl],
+  );
 
   const clearNotifications = useCallback(() => {
     setNotifications([]);
@@ -1249,16 +1308,40 @@ export default function UserDashboardView({
   }, []);
 
   const handleOpenModuleResource = useCallback(
-    async (module, attachment = null, attachmentIndex = 0) => {
+    async (module, attachment = null, attachmentIndex = 0, clickEvent = null) => {
+      clickEvent?.preventDefault();
+      setModuleFileOpenNotice("");
+      setModuleFileOpenFallbackUrl("");
+
       const file = attachment || {
         fileData: module.resourceFileData,
         fileType: module.resourceFileType,
         fileName: module.resourceFileName,
       };
 
-      if (!file?.fileData) return;
+      if (!file?.fileData) {
+        setModuleFileOpenNotice("Lesson file is missing. Please contact support.");
+        return;
+      }
+
       const accessibleUrl = await getAccessibleModuleFileUrl(file.fileData);
-      if (!accessibleUrl) return;
+      if (!accessibleUrl || !normalizeFileUrl(accessibleUrl)) {
+        setModuleFileOpenNotice(
+          "This lesson file URL is invalid. Please contact support.",
+        );
+        return;
+      }
+
+      const openAttempt = triggerModuleFileOpen(accessibleUrl);
+      if (!openAttempt.triggered) {
+        setModuleFileOpenFallbackUrl(openAttempt.url || "");
+        setModuleFileOpenNotice(
+          isStandalonePwaMode()
+            ? "File opening is limited in installed app mode. Please open this lesson in browser."
+            : "Unable to open this lesson file right now.",
+        );
+        return;
+      }
 
       const fileIdentifier = getModuleFileIdentifier(module.id, attachmentIndex);
       setModuleFileProgress((prev) => {
@@ -1277,11 +1360,6 @@ export default function UserDashboardView({
           },
         };
       });
-
-      const openedWindow = window.open(accessibleUrl, "_blank", "noopener,noreferrer");
-      if (!openedWindow) {
-        console.warn("Module file popup was blocked or could not be opened.");
-      }
 
       void upsertModuleFileProgressShared({
         userId,
@@ -1318,7 +1396,13 @@ export default function UserDashboardView({
         return next;
       });
     },
-    [getAccessibleModuleFileUrl, userId],
+    [
+      getAccessibleModuleFileUrl,
+      isStandalonePwaMode,
+      normalizeFileUrl,
+      triggerModuleFileOpen,
+      userId,
+    ],
   );
 
   const handleOpenWorksheetFile = useCallback(
@@ -1725,11 +1809,18 @@ export default function UserDashboardView({
                           <span className="ml-auto">Status</span>
                         </div>
                         {attachments.map((attachment, index) => (
-                          <button
+                          <a
                             key={`${attachment.fileName || attachment.fileUrl || attachment.id || "file"}-${index}`}
-                            type="button"
-                            onClick={() =>
-                              void handleOpenModuleResource(module, attachment, index)
+                            href={String(attachment.fileData || "").trim() || "#"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) =>
+                              void handleOpenModuleResource(
+                                module,
+                                attachment,
+                                index,
+                                event,
+                              )
                             }
                             className={`flex w-full flex-col gap-3 px-3 py-3 text-left transition sm:flex-row sm:items-center ${isLight ? "text-slate-900 hover:bg-slate-100" : "text-slate-100 hover:bg-white/5"} ${
                               index > 0
@@ -1751,7 +1842,7 @@ export default function UserDashboardView({
                             <span className={`ml-0 self-start text-xs font-semibold uppercase tracking-wide text-left sm:ml-auto sm:self-center ${moduleFileProgress[module.id]?.[getModuleFileIdentifier(module.id, index)]?.isOpened ? "text-emerald-400" : "text-slate-400"}`}>
                               {moduleFileProgress[module.id]?.[getModuleFileIdentifier(module.id, index)]?.isOpened ? "Completed" : "Pending"}
                             </span>
-                          </button>
+                          </a>
                         ))}
                       </div>
                     ) : null}
@@ -1886,6 +1977,25 @@ export default function UserDashboardView({
                   </button>
                 )}
             </div>
+
+            {moduleFileOpenNotice ? (
+              <p className={`mt-3 rounded-lg border px-3 py-2 text-xs ${isLight ? "border-amber-300 bg-amber-50 text-amber-800" : "border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>
+                {moduleFileOpenNotice}
+                {moduleFileOpenFallbackUrl ? (
+                  <>
+                    {" "}
+                    <a
+                      href={moduleFileOpenFallbackUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold underline"
+                    >
+                      Open file
+                    </a>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
 
             <div className="mt-4">{renderModulesGrouped()}</div>
           </section>

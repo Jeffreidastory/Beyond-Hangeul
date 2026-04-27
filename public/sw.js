@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const SHELL_CACHE = `beyond-hangeul-shell-${CACHE_VERSION}`;
 const PDF_CACHE = `beyond-hangeul-pdf-${CACHE_VERSION}`;
 const OFFLINE_PAGE = "/offline.html";
@@ -93,6 +93,14 @@ async function pdfHandler(request) {
   }
 }
 
+function isLikelyDownloadRequest(url) {
+  return /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt|zip)$/i.test(url.pathname);
+}
+
+function isStorageFileRequest(url) {
+  return url.pathname.includes("/storage/v1/object/");
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") {
@@ -102,13 +110,23 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   const origin = self.location.origin;
 
-  if (request.destination === "document" || isNavigationRequest(request)) {
-    event.respondWith(networkFirst(request, { fallbackToOfflinePage: true }));
+  // Do not intercept external domains so file/CDN requests are never blocked.
+  if (url.origin !== origin) {
     return;
   }
 
   if (url.pathname.endsWith(".pdf")) {
     event.respondWith(pdfHandler(request));
+    return;
+  }
+
+  if (isStorageFileRequest(url) || isLikelyDownloadRequest(url)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  if (request.destination === "document" || isNavigationRequest(request)) {
+    event.respondWith(networkFirst(request, { fallbackToOfflinePage: true }));
     return;
   }
 
